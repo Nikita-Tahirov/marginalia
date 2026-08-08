@@ -57,11 +57,25 @@
 
         <div class="header-actions">
           <span id="review-count" class="review-count">0 замечаний</span>
-          <button id="copy-review" class="btn btn-ghost compact-btn" type="button" disabled>
-            Скопировать рецензию
+          <button
+            id="copy-review"
+            class="btn btn-secondary action-button"
+            type="button"
+            data-tooltip="Скопировать"
+            aria-label="Скопировать рецензию в буфер обмена"
+            disabled
+          >
+            <span class="mi" aria-hidden="true">content_copy</span>
           </button>
-          <button id="save-review" class="btn btn-primary compact-btn" type="button" disabled>
-            Сохранить .md
+          <button
+            id="save-review"
+            class="btn btn-secondary action-button"
+            type="button"
+            data-tooltip="Скачать"
+            aria-label="Скачать рецензию в файл .md"
+            disabled
+          >
+            <span class="mi" aria-hidden="true">download</span>
           </button>
           <button id="theme-toggle" class="btn btn-icon theme-toggle" type="button" title="Тёмная тема">
             <span aria-hidden="true">◐</span><span class="sr-only">Включить тёмную тему</span>

@@ -694,21 +694,54 @@ function reviewFilename(name) {
   return `${stem}.review.md`;
 }
 
-function saveReview() {
-  const doc = activeDocument();
-  const output = getExportText(doc);
-  if (!doc || !output) return;
+function downloadReview(output, filename) {
   try {
     const blob = new Blob([output], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = reviewFilename(doc.name);
+    anchor.download = filename;
     anchor.hidden = true;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    showToast("Рецензия сохранена.");
+  } catch (error) {
+    showToast(`Не удалось сохранить рецензию: ${error.message}`, "error");
+  }
+}
+
+async function pickSaveTarget(filename) {
+  if (typeof window.showSaveFilePicker !== "function") return null;
+  try {
+    return await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [{ description: "Markdown", accept: { "text/markdown": [".md"] } }],
+    });
+  } catch (error) {
+    if (error.name === "AbortError") return "cancelled";
+    return null;
+  }
+}
+
+async function saveReview() {
+  const doc = activeDocument();
+  const output = getExportText(doc);
+  if (!doc || !output) return;
+
+  const filename = reviewFilename(doc.name);
+  const handle = await pickSaveTarget(filename);
+  if (handle === "cancelled") return;
+  if (!handle) {
+    downloadReview(output, filename);
+    return;
+  }
+
+  try {
+    const writable = await handle.createWritable();
+    await writable.write(output);
+    await writable.close();
     showToast("Рецензия сохранена.");
   } catch (error) {
     showToast(`Не удалось сохранить рецензию: ${error.message}`, "error");

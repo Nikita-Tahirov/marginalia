@@ -57,6 +57,9 @@ test("loads documents, searches and keeps per-document reviews", async ({ page }
 
 test("creates all types and exports identical Markdown to clipboard and download", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:4173" });
+  await page.addInitScript(() => {
+    delete window.showSaveFilePicker;
+  });
   await page.goto("/");
   await loadMarkdown(page);
 
@@ -88,6 +91,51 @@ test("creates all types and exports identical Markdown to clipboard and download
   let downloaded = "";
   for await (const chunk of stream) downloaded += chunk.toString();
   expect(downloaded).toBe(expected);
+});
+
+test("save writes through the file picker and does nothing when the picker is cancelled", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__picker = { suggested: [], written: [], mode: "accept" };
+    window.showSaveFilePicker = async (options) => {
+      window.__picker.suggested.push(options.suggestedName);
+      if (window.__picker.mode === "cancel") {
+        const abort = new Error("Пользователь отменил выбор.");
+        abort.name = "AbortError";
+        throw abort;
+      }
+      return {
+        createWritable: async () => ({
+          write: async (data) => window.__picker.written.push(data),
+          close: async () => {},
+        }),
+      };
+    };
+  });
+
+  const downloads = [];
+  page.on("download", (item) => downloads.push(item));
+
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание для сохранения.");
+
+  await page.locator("#save-review").click();
+  await expect(page.locator("#toast")).toHaveText("Рецензия сохранена.");
+  const accepted = await page.evaluate(() => window.__picker);
+  expect(accepted.suggested).toEqual(["article.review.md"]);
+  expect(accepted.written).toHaveLength(1);
+  expect(accepted.written[0]).toContain("### Строка 3 · Правка");
+
+  await page.evaluate(() => {
+    window.__picker.mode = "cancel";
+  });
+  await page.locator("#save-review").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__picker.suggested.length))
+    .toBe(2);
+  expect(await page.evaluate(() => window.__picker.written.length)).toBe(1);
+  expect(downloads).toHaveLength(0);
 });
 
 test("multiple free notes keep their visible place after anchored additions and deletion", async ({ page }) => {

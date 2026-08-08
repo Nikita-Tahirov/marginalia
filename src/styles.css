@@ -227,6 +227,13 @@ textarea:focus-visible,
   height: 30px;
 }
 
+.action-button {
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0 6px;
+  border-radius: var(--radius-md);
+}
+
 .toc-bar {
   min-height: 0;
   display: flex;
@@ -1091,8 +1098,7 @@ body[data-resizing] {
   }
 
   .review-count,
-  .sort-label,
-  .header-actions .btn-ghost {
+  .sort-label {
     display: none;
   }
 
