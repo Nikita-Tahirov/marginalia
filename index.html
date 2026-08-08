@@ -18,10 +18,7 @@
     <div id="app" class="app-shell">
       <header class="app-header">
         <div class="brand" aria-label="Маргиналии">
-          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="2" width="12" height="12" rx="1"></rect>
-            <line x1="8" y1="2" x2="8" y2="14"></line>
-          </svg>
+          <span class="mi brand-mark" aria-hidden="true">menu_book</span>
           <span>Маргиналии</span>
         </div>
 
@@ -72,23 +69,31 @@
         </div>
       </header>
 
-      <nav class="toc-bar" aria-label="Оглавление документа">
-        <span class="toc-label">Оглавление</span>
-        <span class="toc-divider" aria-hidden="true"></span>
-        <div id="toc-list" class="toc-list">
-          <span class="toc-empty">Откройте документ</span>
-        </div>
-        <span id="document-meta" class="document-meta"></span>
-      </nav>
-
       <main class="workspace">
-        <aside class="review-pane" aria-label="Рецензия">
+        <aside id="review-pane" class="review-pane" aria-label="Рецензия">
           <div class="review-toolbar">
             <div id="filter-list" class="filter-list" aria-label="Фильтры замечаний"></div>
-            <button id="add-general" class="btn btn-secondary add-general" type="button" disabled>
-              + Общее замечание
+            <button
+              id="add-general"
+              class="btn btn-secondary add-general"
+              type="button"
+              data-tooltip="Общее замечание"
+              aria-label="Общее замечание"
+              disabled
+            >
+              <span class="mi" aria-hidden="true">add_comment</span>
             </button>
             <span class="sort-label">по порядку строк</span>
+            <button
+              id="preview-review"
+              class="btn btn-secondary preview-button"
+              type="button"
+              data-tooltip="Предпросмотр"
+              aria-label="Предпросмотр"
+              disabled
+            >
+              <span class="mi" aria-hidden="true">visibility</span>
+            </button>
           </div>
           <div id="review-list" class="review-list" aria-live="polite">
             <div class="empty-review">
@@ -96,13 +101,20 @@
               <span>Выделите текст справа и выберите тип замечания.</span>
             </div>
           </div>
-          <footer class="review-footer">
-            <span>Экспорт: место → цитата → замечание</span>
-            <button id="preview-review" class="btn btn-secondary preview-button" type="button" disabled>
-              Предпросмотр
-            </button>
-          </footer>
         </aside>
+
+        <div
+          class="pane-resizer"
+          data-resize="review"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ширина панели рецензии"
+          aria-controls="review-pane"
+          aria-valuemin="300"
+          aria-valuemax="760"
+          aria-valuenow="520"
+          tabindex="0"
+        ></div>
 
         <section id="document-pane" class="document-pane" aria-label="Исходный документ">
           <div id="document-empty" class="document-empty">
@@ -120,6 +132,28 @@
             <button type="button" data-quote-type="Переписать">Переписать</button>
           </div>
         </section>
+
+        <div
+          class="pane-resizer"
+          data-resize="toc"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ширина оглавления"
+          aria-controls="toc-bar"
+          aria-valuemin="160"
+          aria-valuemax="460"
+          aria-valuenow="248"
+          tabindex="0"
+        ></div>
+
+        <nav id="toc-bar" class="toc-bar" aria-label="Оглавление документа">
+          <span class="toc-label">Оглавление</span>
+          <span class="toc-divider" aria-hidden="true"></span>
+          <div id="toc-list" class="toc-list">
+            <span class="toc-empty">Откройте документ</span>
+          </div>
+          <span id="document-meta" class="document-meta"></span>
+        </nav>
       </main>
 
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

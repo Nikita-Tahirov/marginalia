@@ -11,6 +11,7 @@ import {
   splitPhysicalLines,
 } from "./core.js";
 import { renderMarkdown } from "./markdown.js";
+import "./panes.js";
 
 const elements = {
   documentSelect: document.querySelector("#document-select"),

@@ -217,3 +217,48 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await expect(source).toHaveClass(/is-active-annotation/);
   await expect(source).toBeInViewport();
 });
+
+test("resizes panes by pointer and keyboard and remembers the widths", async ({ page }) => {
+  await page.goto("/");
+  const paneWidths = () =>
+    page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return {
+        review: parseFloat(style.getPropertyValue("--review-width")),
+        toc: parseFloat(style.getPropertyValue("--toc-width")),
+      };
+    });
+
+  const initial = await paneWidths();
+  const reviewHandle = page.locator('.pane-resizer[data-resize="review"]');
+  await reviewHandle.focus();
+  await reviewHandle.press("ArrowRight");
+  await reviewHandle.press("Shift+ArrowRight");
+  const afterKeyboard = await paneWidths();
+  expect(afterKeyboard.review).toBe(initial.review + 52);
+  await expect(reviewHandle).toHaveAttribute("aria-valuenow", String(afterKeyboard.review));
+
+  const tocHandle = page.locator('.pane-resizer[data-resize="toc"]');
+  const box = await tocHandle.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const afterDrag = await paneWidths();
+  expect(afterDrag.toc).toBeGreaterThan(initial.toc + 40);
+
+  await page.reload();
+  const afterReload = await paneWidths();
+  expect(afterReload).toEqual(afterDrag);
+
+  await tocHandle.dblclick();
+  await expect
+    .poll(async () => (await paneWidths()).toc)
+    .toBe(initial.toc);
+
+  // Узкое окно переключает медиазапрос: заявленное значение обязано догнать раскладку.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect
+    .poll(async () => tocHandle.getAttribute("aria-valuenow"))
+    .toBe(String((await paneWidths()).toc));
+});
