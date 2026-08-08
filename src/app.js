@@ -125,6 +125,13 @@ function updateHeader() {
   elements.previewReview.disabled = !doc || count === 0;
 }
 
+const FILTER_ICONS = {
+  Правка: "edit",
+  Вопрос: "help",
+  Удалить: "delete",
+  Переписать: "autorenew",
+};
+
 function renderFilters() {
   const counts = countByType(committedEntries());
   elements.filterList.innerHTML = REVIEW_TYPES.map((type) => {
@@ -133,8 +140,10 @@ function renderFilters() {
       class="filter-chip type-${type.toLowerCase()}${pressed ? " is-active" : ""}"
       type="button"
       data-filter-type="${type}"
+      data-tooltip="${type}"
+      aria-label="${type}"
       aria-pressed="${pressed}"
-    >${type} <span>${counts[type]}</span></button>`;
+    ><span class="mi" aria-hidden="true">${FILTER_ICONS[type]}</span><span class="chip-count">${counts[type]}</span></button>`;
   }).join("");
 }
 
