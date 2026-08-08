@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Маргиналии — локальная рецензия Markdown-документов для ИИ-агентов"
+    />
+    <title>Маргиналии</title>
+    <link
+      rel="stylesheet"
+      href="/_ds/classical-d7409962-51c5-43a3-aa70-c4313bf63b66/styles.css"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="app-header">
+        <div class="brand" aria-label="Маргиналии">
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="12" height="12" rx="1"></rect>
+            <line x1="8" y1="2" x2="8" y2="14"></line>
+          </svg>
+          <span>Маргиналии</span>
+        </div>
+
+        <div class="document-controls">
+          <label class="sr-only" for="document-select">Открытый документ</label>
+          <select id="document-select" class="document-select" disabled>
+            <option>Документ не открыт</option>
+          </select>
+          <button id="open-files" class="btn btn-secondary compact-btn" type="button">
+            Открыть .md
+          </button>
+          <input
+            id="file-input"
+            class="sr-only"
+            type="file"
+            accept=".md,.markdown,text/markdown,text/plain"
+            multiple
+          />
+        </div>
+
+        <div class="search-box" role="search">
+          <label class="sr-only" for="search-input">Поиск по документу</label>
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="6" cy="6" r="4.2"></circle>
+            <line x1="9.2" y1="9.2" x2="12.5" y2="12.5"></line>
+          </svg>
+          <input id="search-input" type="search" placeholder="Поиск по документу" disabled />
+          <span id="search-counter" class="search-counter" aria-live="polite">0 / 0</span>
+          <button id="search-prev" class="icon-button" type="button" title="Предыдущее совпадение" disabled>
+            <span aria-hidden="true">↑</span><span class="sr-only">Предыдущее совпадение</span>
+          </button>
+          <button id="search-next" class="icon-button" type="button" title="Следующее совпадение" disabled>
+            <span aria-hidden="true">↓</span><span class="sr-only">Следующее совпадение</span>
+          </button>
+        </div>
+
+        <div class="header-actions">
+          <span id="review-count" class="review-count">0 замечаний</span>
+          <button id="copy-review" class="btn btn-ghost compact-btn" type="button" disabled>
+            Скопировать рецензию
+          </button>
+          <button id="save-review" class="btn btn-primary compact-btn" type="button" disabled>
+            Сохранить .md
+          </button>
+          <button id="theme-toggle" class="btn btn-icon theme-toggle" type="button" title="Тёмная тема">
+            <span aria-hidden="true">◐</span><span class="sr-only">Включить тёмную тему</span>
+          </button>
+        </div>
+      </header>
+
+      <nav class="toc-bar" aria-label="Оглавление документа">
+        <span class="toc-label">Оглавление</span>
+        <span class="toc-divider" aria-hidden="true"></span>
+        <div id="toc-list" class="toc-list">
+          <span class="toc-empty">Откройте документ</span>
+        </div>
+        <span id="document-meta" class="document-meta"></span>
+      </nav>
+
+      <main class="workspace">
+        <aside class="review-pane" aria-label="Рецензия">
+          <div class="review-toolbar">
+            <div id="filter-list" class="filter-list" aria-label="Фильтры замечаний"></div>
+            <button id="add-general" class="btn btn-secondary add-general" type="button" disabled>
+              + Общее замечание
+            </button>
+            <span class="sort-label">по порядку строк</span>
+          </div>
+          <div id="review-list" class="review-list" aria-live="polite">
+            <div class="empty-review">
+              <p>Здесь появится рецензия.</p>
+              <span>Выделите текст справа и выберите тип замечания.</span>
+            </div>
+          </div>
+          <footer class="review-footer">
+            <span>Экспорт: место → цитата → замечание</span>
+            <button id="preview-review" class="btn btn-secondary preview-button" type="button" disabled>
+              Предпросмотр
+            </button>
+          </footer>
+        </aside>
+
+        <section id="document-pane" class="document-pane" aria-label="Исходный документ">
+          <div id="document-empty" class="document-empty">
+            <div class="empty-mark" aria-hidden="true">¶</div>
+            <h1>Откройте Markdown-документ</h1>
+            <p>Файл останется в этом браузере и не будет отправлен наружу.</p>
+            <button id="open-files-empty" class="btn btn-primary" type="button">Выбрать .md</button>
+          </div>
+          <article id="document-body" class="document-body" hidden></article>
+          <div id="quote-toolbar" class="quote-toolbar" hidden role="toolbar" aria-label="Создать замечание">
+            <span class="quote-label">Цитировать</span>
+            <button type="button" data-quote-type="Правка">Правка</button>
+            <button type="button" data-quote-type="Вопрос">Вопрос</button>
+            <button type="button" data-quote-type="Удалить">Удалить</button>
+            <button type="button" data-quote-type="Переписать">Переписать</button>
+          </div>
+        </section>
+      </main>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+      <dialog id="preview-dialog" class="preview-dialog">
+        <div class="dialog-heading">
+          <h2>Markdown-рецензия</h2>
+          <button id="close-preview" class="btn btn-icon" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <pre id="preview-content" tabindex="0"></pre>
+      </dialog>
+    </div>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
