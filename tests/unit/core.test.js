@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -50,12 +49,15 @@ test("splitPhysicalLines preserves LF, CRLF, CR and a trailing empty physical li
   assert.deepEqual(splitPhysicalLines(""), { lines: [""], starts: [0], endings: [""] });
 });
 
-test("the supplied sample has 283 physical lines without normalizing its bytes", async () => {
-  const path = new URL("../../uploads/autoref_file-1786119922332-a407.md", import.meta.url);
-  const bytes = await readFile(path);
-  const text = bytes.toString("utf8");
-  assert.equal(splitPhysicalLines(text).lines.length, 283);
-  assert.deepEqual(Buffer.from(text, "utf8"), bytes);
+test("a 283-line input preserves every physical line and original line endings", () => {
+  const text = Array.from({ length: 282 }, (_, index) => `Строка ${index + 1}`)
+    .join("\r\n") + "\r\n";
+  const split = splitPhysicalLines(text);
+  assert.equal(split.lines.length, 283);
+  assert.equal(split.lines[0], "Строка 1");
+  assert.equal(split.lines[281], "Строка 282");
+  assert.equal(split.lines[282], "");
+  assert.equal(split.lines.map((line, index) => line + split.endings[index]).join(""), text);
 });
 
 test("anchored entries sort by start line, start column, end and creation sequence", () => {

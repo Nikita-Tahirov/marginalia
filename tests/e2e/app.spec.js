@@ -211,4 +211,9 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await firstType.click();
   await commitDraft(page, "Замечание из глубины документа.");
   await expect(page.locator(".review-card")).toContainText("строка 37");
+
+  await page.locator("#document-pane").evaluate((element) => element.scrollTo({ top: 0 }));
+  await page.locator(".review-card blockquote").click();
+  await expect(source).toHaveClass(/is-active-annotation/);
+  await expect(source).toBeInViewport();
 });
