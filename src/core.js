@@ -138,10 +138,114 @@ export function serializeEntry(entry) {
   return parts.join("\n\n");
 }
 
-export function serializeReview(entries) {
+export const REVIEW_MARK = "marginalia";
+export const REVIEW_MARK_VERSION = 1;
+
+const MARK_PATTERN = /<!--\s*marginalia:(\d+)\s+([\s\S]*?)\s*-->\s*$/;
+
+// Машинные поля прячем в HTML-комментарий: он невидим в любом просмотрщике
+// Markdown, поэтому выгруженная рецензия остаётся такой же читаемой, как была.
+function embedMark(payload) {
+  const json = JSON.stringify(payload).replaceAll("--", "-\\u002d");
+  return `<!-- ${REVIEW_MARK}:${REVIEW_MARK_VERSION} ${json} -->`;
+}
+
+export function serializeReview(entries, document = null) {
   const committed = entries.filter((entry) => entry.status !== "draft");
   if (!committed.length) return "";
-  return `${orderReviewEntries(committed).map(serializeEntry).join("\n\n")}\n`;
+  const ordered = orderReviewEntries(committed);
+  const body = `${ordered.map(serializeEntry).join("\n\n")}\n`;
+  if (!document) return body;
+  return `${body}\n${embedMark({
+    document: { name: document.name, sha256: document.sha256 },
+    entries: ordered,
+  })}\n`;
+}
+
+export async function sha256Hex(text) {
+  const bytes = new TextEncoder().encode(String(text ?? ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function parseHeading(heading) {
+  const general = heading.trim() === "Общее замечание";
+  if (general) return { kind: "free" };
+  const match = /^Строк[аи]\s+(\d+)(?:[–—-](\d+))?\s+·\s+(.+)$/.exec(heading.trim());
+  if (!match) return null;
+  const type = REVIEW_TYPES.includes(match[3].trim()) ? match[3].trim() : REVIEW_TYPES[0];
+  const startLine = Number(match[1]);
+  return { kind: "anchored", startLine, endLine: Number(match[2] ?? match[1]), type };
+}
+
+function parseBlock(block, index) {
+  const lines = block.split("\n");
+  const parsed = parseHeading(lines.shift() ?? "");
+  if (!parsed) return null;
+
+  while (lines.length && !lines[0].trim()) lines.shift();
+  const quote = [];
+  while (lines.length && /^>\s?/.test(lines[0])) quote.push(lines.shift().replace(/^>\s?/, ""));
+
+  const rest = lines.join("\n").trim();
+  const replacementAt = rest.indexOf("**Заменить на:** ");
+  const comment = (replacementAt >= 0 ? rest.slice(0, replacementAt) : rest).trim();
+  const replacement = replacementAt >= 0 ? rest.slice(replacementAt + 17).trim() : "";
+  if (!comment) return null;
+
+  if (parsed.kind === "free") {
+    return {
+      kind: "free",
+      status: "committed",
+      comment,
+      boundaryKey: "end",
+      freeOrder: index + 1,
+      sequence: index + 1,
+    };
+  }
+
+  return {
+    kind: "anchored",
+    status: "committed",
+    type: parsed.type,
+    quote: quote.join("\n"),
+    comment,
+    replacement,
+    startLine: parsed.startLine,
+    startColumn: 0,
+    endLine: parsed.endLine,
+    endColumn: quote.join("\n").length,
+    sequence: index + 1,
+  };
+}
+
+// Возвращает записи и, если рецензия выгружена этим приложением, документ, к
+// которому она была написана. Машинный блок точен; разбор текста — запасной
+// путь для файла, который человек правил руками.
+export function parseReview(text) {
+  const source = String(text ?? "");
+  const mark = MARK_PATTERN.exec(source);
+  if (mark) {
+    try {
+      const payload = JSON.parse(mark[2]);
+      const entries = Array.isArray(payload.entries) ? payload.entries : [];
+      if (entries.length) {
+        return { document: payload.document ?? null, entries, origin: "mark" };
+      }
+    } catch {
+      // Блок повреждён правкой руками — разбираем сам текст ниже.
+    }
+  }
+
+  const body = mark ? source.slice(0, mark.index) : source;
+  const entries = body
+    .split(/\n(?=### )/)
+    .map((block) => block.replace(/^### /, "").trim())
+    .filter(Boolean)
+    .map(parseBlock)
+    .filter(Boolean);
+
+  return { document: null, entries, origin: entries.length ? "text" : "empty" };
 }
 
 export function countByType(entries) {

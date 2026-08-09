@@ -6,11 +6,23 @@ import {
   lineHeading,
   nextFreeOrder,
   orderReviewEntries,
+  parseReview,
   pluralizeReview,
   serializeReview,
+  sha256Hex,
   splitPhysicalLines,
 } from "./core.js";
 import { renderMarkdown } from "./markdown.js";
+import {
+  deleteDocument as forgetDocument,
+  findByHash,
+  listDocuments,
+  loadReview,
+  requestPersistence,
+  saveDocument,
+  saveReview as storeReview,
+} from "./storage.js";
+import { noticeAfterUpdate } from "./updates.js";
 import "./panes.js";
 
 const elements = {
@@ -18,6 +30,12 @@ const elements = {
   openFiles: document.querySelector("#open-files"),
   openFilesEmpty: document.querySelector("#open-files-empty"),
   fileInput: document.querySelector("#file-input"),
+  reviewInput: document.querySelector("#review-input"),
+  openReview: document.querySelector("#open-review"),
+  addVersion: document.querySelector("#add-version"),
+  deleteDocument: document.querySelector("#delete-document"),
+  importNotice: document.querySelector("#import-notice"),
+  saveState: document.querySelector("#save-state"),
   searchInput: document.querySelector("#search-input"),
   searchCounter: document.querySelector("#search-counter"),
   searchPrev: document.querySelector("#search-prev"),
@@ -53,6 +71,11 @@ const state = {
   searchIndex: -1,
   toastTimer: null,
   theme: "light",
+  // Куда попадёт следующий выбранный файл: null — новый документ, иначе новая
+  // версия названной семьи. Семью выбирает пользователь кнопкой, а не догадка
+  // по имени файла: «статья_v2.md» и «статья_финал.md» для эвристики неразличимы.
+  versionTarget: null,
+  persistenceRequested: false,
 };
 
 function activeDocument() {
@@ -97,7 +120,7 @@ function allReviewEntries(doc = activeDocument()) {
 }
 
 function getExportText(doc = activeDocument()) {
-  return serializeReview(doc?.entries ?? []);
+  return serializeReview(doc?.entries ?? [], doc ?? null);
 }
 
 function updateHeader() {
@@ -105,6 +128,9 @@ function updateHeader() {
   elements.documentSelect.disabled = !state.documents.length;
   elements.searchInput.disabled = !doc;
   elements.addGeneral.disabled = !doc;
+  elements.openReview.disabled = !doc;
+  elements.addVersion.disabled = !doc;
+  elements.deleteDocument.disabled = !doc;
 
   elements.documentSelect.replaceChildren();
   if (!state.documents.length) {
@@ -112,7 +138,10 @@ function updateHeader() {
   } else {
     for (const item of state.documents) {
       const count = item.lineData.lines.length;
-      const option = new Option(`${item.name} · ${count} стр.`, item.id);
+      // Номер версии показываем только там, где версий больше одной: для
+      // единственного документа он был бы шумом.
+      const version = familySize(item.familyId) > 1 ? ` · вер. ${item.version}` : "";
+      const option = new Option(`${item.name}${version} · ${count} стр.`, item.id);
       option.selected = item.id === state.activeDocumentId;
       elements.documentSelect.append(option);
     }
@@ -372,14 +401,70 @@ function activateDocument(id) {
   state.pendingSelection = null;
   state.activeEntryId = null;
   state.selectedTypes = new Set(REVIEW_TYPES);
+  applyImportNotice(null);
   updateHeader();
   renderFilters();
   renderReview();
   renderDocument();
 }
 
+// В хранилище едет только то, что нельзя вычислить: lineData целиком выводится
+// из текста и восстанавливается при чтении.
+function storedShape(doc) {
+  return {
+    id: doc.id,
+    name: doc.name,
+    text: doc.text,
+    sha256: doc.sha256,
+    familyId: doc.familyId,
+    version: doc.version,
+    createdAt: doc.createdAt,
+  };
+}
+
+function restoreDocument(stored, review) {
+  return {
+    ...stored,
+    lineData: splitPhysicalLines(stored.text),
+    entries: review?.entries ?? [],
+    sequence: review?.sequence ?? 0,
+  };
+}
+
+async function persistDocument(doc) {
+  await saveDocument(storedShape(doc));
+}
+
+// Человеку, который привык нажимать «Сохранить», нужно увидеть, что теперь это
+// делается за него. Отметка заодно служит признаком завершённой записи.
+function showSaveState(state) {
+  elements.saveState.hidden = false;
+  elements.saveState.dataset.state = state;
+  elements.saveState.textContent = state === "saved" ? "Сохранено" : "Не сохранено";
+}
+
+async function persistReview(doc) {
+  if (!doc) return;
+  const written = await storeReview(doc.id, doc.entries, doc.sequence);
+  showSaveState(written === null ? "failed" : "saved");
+  // Устойчивость просим в момент, когда появились данные, которые больно
+  // потерять: на пустом приложении запрос выглядел бы беспричинным. Браузер
+  // отказывает свежему сайту без истории посещений, поэтому попытку повторяем
+  // в каждом сеансе, пока режим не выдан, — а не один раз навсегда.
+  if (!state.persistenceRequested && doc.entries.length) {
+    state.persistenceRequested = true;
+    state.persistent = await requestPersistence();
+  }
+}
+
+function familySize(familyId) {
+  return state.documents.filter((doc) => doc.familyId === familyId).length;
+}
+
 async function loadFiles(fileList) {
   const files = [...fileList];
+  const versionTarget = state.versionTarget;
+  state.versionTarget = null;
   if (!files.length) return;
   let lastLoaded = null;
   for (const file of files) {
@@ -389,15 +474,40 @@ async function loadFiles(fileList) {
     }
     try {
       const text = await file.text();
+      const sha256 = await sha256Hex(text);
+
+      // Тот же файл — тот же документ: иначе список за месяц зарастёт копиями,
+      // а рецензия к каждой копии начнётся заново.
+      let known = state.documents.find((doc) => doc.sha256 === sha256) ?? null;
+      if (!known) {
+        const stored = await findByHash(sha256);
+        if (stored) {
+          known = restoreDocument(stored, await loadReview(stored.id));
+          state.documents.push(known);
+        }
+      }
+      if (known) {
+        lastLoaded = known;
+        showToast(`«${known.name}» уже открыт — показана прежняя рецензия.`);
+        continue;
+      }
+
+      const id = crypto.randomUUID();
+      const family = versionTarget ?? id;
       const doc = {
-        id: crypto.randomUUID(),
+        id,
         name: file.name,
         text,
+        sha256,
+        familyId: family,
+        version: familySize(family) + 1,
+        createdAt: Date.now(),
         lineData: splitPhysicalLines(text),
         entries: [],
         sequence: 0,
       };
       state.documents.push(doc);
+      await persistDocument(doc);
       lastLoaded = doc;
     } catch (error) {
       showToast(`Не удалось прочитать «${file.name}»: ${error.message}`, "error");
@@ -406,8 +516,62 @@ async function loadFiles(fileList) {
   elements.fileInput.value = "";
   if (lastLoaded) {
     activateDocument(lastLoaded.id);
-    showToast(`Открыт «${lastLoaded.name}».`);
+    if (lastLoaded.version > 1) showToast(`Открыта версия ${lastLoaded.version}: «${lastLoaded.name}».`);
   }
+}
+
+async function removeActiveDocument() {
+  const doc = activeDocument();
+  if (!doc) return;
+  await forgetDocument(doc.id);
+  state.documents = state.documents.filter((item) => item.id !== doc.id);
+  state.activeDocumentId = state.documents.at(-1)?.id ?? null;
+  state.draft = null;
+  state.activeEntryId = null;
+  updateHeader();
+  renderFilters();
+  renderReview();
+  renderDocument();
+  showToast(`Документ «${doc.name}» удалён.`);
+}
+
+async function importReview(file) {
+  const doc = activeDocument();
+  elements.reviewInput.value = "";
+  if (!doc || !file) return;
+  const text = await file.text();
+  const parsed = parseReview(text);
+  if (!parsed.entries.length) {
+    showToast("В файле нет замечаний, которые удалось бы разобрать.", "error");
+    return;
+  }
+
+  const foreign = parsed.document?.sha256 && parsed.document.sha256 !== doc.sha256;
+  const maxSequence = parsed.entries.reduce((top, entry) => Math.max(top, entry.sequence ?? 0), 0);
+  doc.entries = parsed.entries.map((entry) => ({
+    ...entry,
+    id: crypto.randomUUID(),
+    status: "committed",
+  }));
+  doc.sequence = Math.max(doc.sequence, maxSequence);
+  await persistReview(doc);
+  state.activeEntryId = null;
+  refreshReviewState();
+  applyImportNotice(foreign ? parsed.document : null);
+  showToast(
+    foreign
+      ? "Рецензия открыта, но написана к другой версии статьи."
+      : `Загружено ${pluralizeReview(doc.entries.length)}.`,
+    foreign ? "error" : "info",
+  );
+}
+
+function applyImportNotice(foreignDocument) {
+  elements.importNotice.hidden = !foreignDocument;
+  if (!foreignDocument) return;
+  elements.importNotice.textContent = `Рецензия написана к другой версии статьи${
+    foreignDocument.name ? ` («${foreignDocument.name}»)` : ""
+  }. Привязка к строкам может быть смещена.`;
 }
 
 function sourceSpan(node) {
@@ -579,6 +743,7 @@ function commitDraft() {
   state.draft = null;
   state.activeEntryId = committed.kind === "anchored" ? committed.id : null;
   refreshReviewState();
+  persistReview(doc);
   showToast(committed.kind === "anchored" ? "Замечание добавлено." : "Общее замечание добавлено.");
 }
 
@@ -595,6 +760,7 @@ function deleteEntry(id) {
   doc.entries.splice(index, 1);
   if (state.activeEntryId === id) state.activeEntryId = null;
   refreshReviewState();
+  persistReview(doc);
   showToast("Запись удалена.");
 }
 
@@ -776,6 +942,15 @@ elements.previewDialog.addEventListener("click", (event) => {
   if (event.target === elements.previewDialog) elements.previewDialog.close();
 });
 elements.addGeneral.addEventListener("click", () => createFreeDraft());
+elements.openReview.addEventListener("click", () => elements.reviewInput.click());
+elements.reviewInput.addEventListener("change", () => importReview(elements.reviewInput.files[0]));
+elements.addVersion.addEventListener("click", () => {
+  const doc = activeDocument();
+  if (!doc) return;
+  state.versionTarget = doc.familyId;
+  elements.fileInput.click();
+});
+elements.deleteDocument.addEventListener("click", removeActiveDocument);
 
 elements.filterList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter-type]");
@@ -869,7 +1044,17 @@ elements.tocList.addEventListener("click", (event) => {
   document.getElementById(button.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
+async function restoreWorkspace() {
+  const stored = await listDocuments();
+  if (!stored?.length) return;
+  const reviews = await Promise.all(stored.map((item) => loadReview(item.id)));
+  state.documents = stored.map((item, index) => restoreDocument(item, reviews[index]));
+  activateDocument(state.documents.at(-1).id);
+}
+
 updateHeader();
 renderFilters();
 renderReview();
 renderDocument();
+restoreWorkspace();
+noticeAfterUpdate(showToast);

@@ -14,6 +14,12 @@
         "--strictPort"
       ],
       "port": 5173
+    },
+    {
+      "name": "preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "preview", "--host", "127.0.0.1", "--port", "4175", "--strictPort"],
+      "port": 4175
     }
   ]
 }

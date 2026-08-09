@@ -1,0 +1,13 @@
+{
+  "projects": {},
+  "targets": {
+    "my-nikita-tools": {
+      "hosting": {
+        "app": [
+          "marginalia-review"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

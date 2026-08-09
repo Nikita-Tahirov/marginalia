@@ -8,6 +8,21 @@
       content="Маргиналии — локальная рецензия Markdown-документов для ИИ-агентов"
     />
     <title>Маргиналии</title>
+    <meta name="theme-color" content="#201f1d" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- На iOS этот значок имеет приоритет над иконками из манифеста. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script>
+      // Firebase раздаёт сайт по двум адресам, а браузерное хранилище привязано
+      // к адресу: зайдя вчера по одному, а сегодня по другому, человек увидел бы
+      // пустое приложение и решил, что рецензии пропали. Уводим на канонический
+      // адрес до того, как приложение обратится к хранилищу.
+      if (location.hostname === "marginalia-review.firebaseapp.com") {
+        location.replace(
+          "https://marginalia-review.web.app" + location.pathname + location.search + location.hash,
+        );
+      }
+    </script>
     <link
       rel="stylesheet"
       href="/_ds/classical-d7409962-51c5-43a3-aa70-c4313bf63b66/styles.css"
@@ -37,6 +52,35 @@
             accept=".md,.markdown,text/markdown,text/plain"
             multiple
           />
+          <button
+            id="add-version"
+            class="btn btn-secondary action-button"
+            type="button"
+            data-tooltip="Новая версия"
+            aria-label="Загрузить новую версию этой статьи"
+            disabled
+          >
+            <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="1.6" y="1.6" width="8" height="9.6" rx="1.4"></rect>
+              <path d="M5.4 13.4h6.2a1.4 1.4 0 0 0 1.4-1.4V5.2"></path>
+              <path d="M4.2 6.4h3.2M5.8 4.8v3.2"></path>
+            </svg>
+          </button>
+          <button
+            id="delete-document"
+            class="btn btn-secondary action-button"
+            type="button"
+            data-tooltip="Удалить документ"
+            aria-label="Удалить документ вместе с его рецензией"
+            disabled
+          >
+            <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M2.4 3.9h10.2"></path>
+              <path d="M6 3.9V2.6h3v1.3"></path>
+              <path d="M3.7 3.9l.7 8a1.2 1.2 0 0 0 1.2 1.1h3.8a1.2 1.2 0 0 0 1.2-1.1l.7-8"></path>
+              <path d="M6.2 6.4v4M8.8 6.4v4"></path>
+            </svg>
+          </button>
         </div>
 
         <div class="search-box" role="search">
@@ -57,6 +101,7 @@
 
         <div class="header-actions">
           <span id="review-count" class="review-count">0 замечаний</span>
+          <span id="save-state" class="save-state" role="status" aria-live="polite" hidden></span>
           <button
             id="copy-review"
             class="btn btn-secondary action-button"
@@ -99,6 +144,26 @@
             </button>
             <span class="sort-label">по порядку строк</span>
             <button
+              id="open-review"
+              class="btn btn-secondary action-button"
+              type="button"
+              data-tooltip="Открыть рецензию"
+              aria-label="Открыть сохранённую рецензию из файла"
+              disabled
+            >
+              <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M3 9.4v2.2a1.3 1.3 0 0 0 1.3 1.3h6.4a1.3 1.3 0 0 0 1.3-1.3V9.4"></path>
+                <path d="M7.5 2.2v7.2"></path>
+                <path d="M4.9 4.8L7.5 2.2l2.6 2.6"></path>
+              </svg>
+            </button>
+            <input
+              id="review-input"
+              class="sr-only"
+              type="file"
+              accept=".md,.markdown,text/markdown,text/plain"
+            />
+            <button
               id="preview-review"
               class="btn btn-secondary preview-button"
               type="button"
@@ -109,6 +174,7 @@
               <span class="mi" aria-hidden="true">visibility</span>
             </button>
           </div>
+          <p id="import-notice" class="import-notice" role="status" hidden></p>
           <div id="review-list" class="review-list" aria-live="polite">
             <div class="empty-review">
               <p>Здесь появится рецензия.</p>

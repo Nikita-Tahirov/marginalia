@@ -266,6 +266,113 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await expect(source).toBeInViewport();
 });
 
+test("keeps the review after the browser is closed and reopened", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3, "Вопрос");
+  await commitDraft(page, "Замечание, которое обязано пережить перезагрузку.");
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator("#save-state")).toHaveText("Сохранено");
+
+  await page.reload();
+  await expect(page.locator("#document-select")).toContainText("article.md");
+  await expect(page.locator(".review-card")).toContainText(
+    "Замечание, которое обязано пережить перезагрузку.",
+  );
+  // Привязка к строке восстановлена, а не потеряна вместе с разметкой.
+  await expect(page.locator('[data-source-line="3"].is-annotated')).not.toHaveCount(0);
+
+  // Тот же файл не заводит копию: рецензия продолжается, а не начинается заново.
+  await loadMarkdown(page);
+  await expect(page.locator("#document-select option")).toHaveCount(1);
+  await expect(page.locator(".review-card")).toHaveCount(1);
+});
+
+test("adds a second version on request and deletes a document with its review", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание к первой версии.");
+
+  await page.locator("#add-version").click();
+  await page.locator("#file-input").setInputFiles({
+    name: "article.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(`${article}\nДописанный абзац.\n`),
+  });
+  await expect(page.locator("#document-select option")).toHaveCount(2);
+  await expect(page.locator("#document-select")).toContainText("вер. 2");
+  // Замечания на новую версию не переносятся: это осознанное решение, а не пропуск.
+  await expect(page.locator(".review-card")).toHaveCount(0);
+
+  await page.locator("#delete-document").click();
+  await expect(page.locator("#document-select option")).toHaveCount(1);
+  await expect(page.locator(".review-card")).toContainText("Замечание к первой версии.");
+
+  await page.reload();
+  await expect(page.locator("#document-select option")).toHaveCount(1);
+});
+
+test("reopens an exported review and warns when it belongs to another version", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 4, "Переписать");
+  await commitDraft(page, "Замечание для выгрузки.");
+  await page.locator("#preview-review").click();
+  const exported = await page.locator("#preview-content").textContent();
+  await page.locator("#close-preview").click();
+  expect(exported).toContain("<!-- marginalia:1 ");
+
+  // Своя статья: рецензия возвращается с привязкой и без предупреждения.
+  await page.locator(".review-card [data-action=\"delete\"]").click();
+  await expect(page.locator(".review-card")).toHaveCount(0);
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(exported),
+  });
+  await expect(page.locator(".review-card")).toContainText("Замечание для выгрузки.");
+  await expect(page.locator('[data-source-line="4"].is-annotated')).not.toHaveCount(0);
+  await expect(page.locator("#import-notice")).toBeHidden();
+
+  // Чужая версия: рецензия всё равно открывается, но о смещении сказано прямо.
+  await loadMarkdown(page, "other.md", "# Другая\n\nСовсем другой текст.\n");
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(exported),
+  });
+  await expect(page.locator(".review-card")).toContainText("Замечание для выгрузки.");
+  await expect(page.locator("#import-notice")).toBeVisible();
+  await expect(page.locator("#import-notice")).toContainText("другой версии статьи");
+});
+
+test("keeps working when the browser forbids storage", async ({ page }) => {
+  // Приватное окно и запрет хранилища в настройках: рецензия не переживёт
+  // закрытия вкладки, но работать в ней человек обязан как прежде.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "indexedDB", {
+      get() {
+        throw new DOMException("Хранилище запрещено", "SecurityError");
+      },
+    });
+  });
+
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание без хранилища.");
+  await expect(page.locator(".review-card")).toContainText("Замечание без хранилища.");
+  await expect(page.locator("#save-state")).toHaveText("Не сохранено");
+
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Правка");
+  expect(errors).toEqual([]);
+});
+
 test("resizes panes by pointer and keyboard and remembers the widths", async ({ page }) => {
   await page.goto("/");
   const paneWidths = () =>

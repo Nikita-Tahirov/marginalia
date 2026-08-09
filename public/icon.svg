@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Маргиналии">
+  <rect width="512" height="512" rx="112" fill="#201f1d" />
+  <rect x="96" y="72" width="320" height="368" rx="16" fill="#f3f2f2" />
+  <!-- Поле рецензента: вертикаль, вдоль которой живут замечания. -->
+  <line x1="296" y1="104" x2="296" y2="408" stroke="#b68235" stroke-width="6" stroke-linecap="round" />
+  <g fill="#201f1d" opacity="0.72">
+    <rect x="136" y="144" width="128" height="14" rx="7" />
+    <rect x="136" y="192" width="128" height="14" rx="7" />
+    <rect x="136" y="240" width="96" height="14" rx="7" />
+    <rect x="136" y="288" width="128" height="14" rx="7" />
+    <rect x="136" y="336" width="72" height="14" rx="7" />
+  </g>
+  <g fill="#b68235">
+    <rect x="324" y="186" width="60" height="12" rx="6" />
+    <rect x="324" y="214" width="44" height="12" rx="6" />
+    <circle cx="310" cy="192" r="12" />
+  </g>
+</svg>

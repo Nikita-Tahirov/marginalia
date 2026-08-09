@@ -6,7 +6,9 @@ import {
   boundaryAfter,
   nextFreeOrder,
   orderReviewEntries,
+  parseReview,
   serializeReview,
+  sha256Hex,
   splitPhysicalLines,
 } from "../../src/core.js";
 
@@ -118,4 +120,57 @@ test("export uses readable singular/range headings, quotes, replacement and free
     serializeReview([general, second, first]),
     "### Строки 47–50 · Вопрос\n\n> первая строка\n> вторая строка\n\nНужен источник.\n\n**Заменить на:** Новая первая\nНовая вторая\n\n### Строка 52 · Удалить\n\n> d\n\nКомментарий d\n\n### Общее замечание\n\nОбщий итог.\n",
   );
+});
+
+test("sha256 distinguishes documents and matches the published vector", async () => {
+  assert.equal(
+    await sha256Hex("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
+  assert.notEqual(await sha256Hex("Статья\n"), await sha256Hex("Статья \n"));
+  assert.equal(await sha256Hex("Статья\n"), await sha256Hex("Статья\n"));
+});
+
+test("the machine block travels the round trip without touching readable output", async () => {
+  const anchoredEntry = { ...anchored("q", 3, 0, 4, 6, 1), type: "Вопрос", comment: "Уточнить." };
+  const general = free("g", boundaryAfter(anchoredEntry), 1, 2);
+  general.comment = "Общий итог.";
+  const entries = [general, anchoredEntry];
+  const document = { name: "article.md", sha256: await sha256Hex("текст") };
+
+  const plain = serializeReview(entries);
+  const marked = serializeReview(entries, document);
+  assert.ok(marked.startsWith(plain), "читаемая часть экспорта не должна меняться");
+  assert.match(marked, /<!-- marginalia:1 /);
+
+  const parsed = parseReview(marked);
+  assert.equal(parsed.origin, "mark");
+  assert.equal(parsed.document.sha256, document.sha256);
+  assert.deepEqual(
+    orderReviewEntries(parsed.entries).map((entry) => entry.comment),
+    orderReviewEntries(entries).map((entry) => entry.comment),
+  );
+  assert.equal(serializeReview(parsed.entries), plain);
+});
+
+test("a hand-edited review without the machine block is still read from its text", () => {
+  const parsed = parseReview(
+    "### Строки 47–50 · Вопрос\n\n> цитата\n\nНужен источник.\n\n**Заменить на:** Другое\n\n### Общее замечание\n\nОбщий итог.\n",
+  );
+  assert.equal(parsed.origin, "text");
+  assert.equal(parsed.document, null);
+  assert.equal(parsed.entries.length, 2);
+  const [first] = parsed.entries;
+  assert.equal(first.type, "Вопрос");
+  assert.equal(first.startLine, 47);
+  assert.equal(first.endLine, 50);
+  assert.equal(first.quote, "цитата");
+  assert.equal(first.replacement, "Другое");
+  assert.equal(parsed.entries[1].kind, "free");
+});
+
+test("a comment containing a comment terminator survives the machine block", async () => {
+  const hostile = { ...anchored("h", 1, 0, 1, 2, 1), comment: "Смотри --> сюда <!-- и сюда" };
+  const marked = serializeReview([hostile], { name: "a.md", sha256: "0" });
+  assert.equal(parseReview(marked).entries[0].comment, hostile.comment);
 });
