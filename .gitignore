@@ -6,3 +6,12 @@ test-results/
 uploads/
 .firebase/
 firebase-debug.log
+
+# Артефакты Claude Design: выгружаются инструментом и не участвуют в сборке.
+# Исключение — _ds/**/styles.css, он отслеживается: на нём держатся токены темы.
+md-annotator.html
+support.js
+_ds/**/_ds_bundle.js
+_ds/**/_ds_manifest.json
+_ds/**/_adherence.oxlintrc.json
+_ds/**/readme.md
