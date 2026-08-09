@@ -351,6 +351,19 @@ test("reopens an exported review and warns when it belongs to another version", 
   await expect(page.locator("#import-notice")).toContainText("другой версии статьи");
 });
 
+test("announces an update once it has already been applied", async ({ page }) => {
+  await page.goto("/");
+  // Так выглядит возвращение человека, у которого приложение обновилось между
+  // визитами: отметка прошлой сборки не совпадает с текущей.
+  await page.evaluate(() => localStorage.setItem("marginalia:build", "предыдущая-сборка"));
+  await page.reload();
+  await expect(page.locator("#toast")).toHaveText("Приложение обновлено.");
+
+  // Второе открытие уже ничего не сообщает: обновления не было.
+  await page.reload();
+  await expect(page.locator("#toast")).toBeHidden();
+});
+
 test("keeps working when the browser forbids storage", async ({ page }) => {
   // Приватное окно и запрет хранилища в настройках: рецензия не переживёт
   // закрытия вкладки, но работать в ней человек обязан как прежде.
