@@ -90,7 +90,9 @@ textarea:focus-visible,
 
 .app-shell {
   height: 100dvh;
-  min-width: 980px;
+  /* Нижняя граница — планшет в книжной ориентации. Ниже неё три колонки не
+     помещаются, поэтому раскладка перестраивается, а не прокручивается вбок. */
+  min-width: 720px;
   display: flex;
   flex-direction: column;
   color: var(--color-text);
@@ -1144,5 +1146,66 @@ body[data-resizing] {
 
   .document-controls {
     max-width: 300px;
+  }
+}
+
+/* Планшет в альбомной ориентации и узкий ноутбук: оглавление уходит первым —
+   оно вспомогательное, а документу и рецензии нужна ширина, чтобы строки не
+   ломались. */
+@media (max-width: 1040px) {
+  :root {
+    --review-width: 380px;
+  }
+
+  .workspace {
+    grid-template-columns: var(--review-width) var(--resizer-width) minmax(0, 1fr);
+  }
+
+  .toc-bar,
+  .pane-resizer[data-resize="toc"] {
+    display: none;
+  }
+
+  .search-box {
+    min-width: 150px;
+  }
+}
+
+/* Планшет в книжной ориентации: колонки не помещаются рядом, поэтому рецензия
+   встаёт над документом. Ширину панелей мышью здесь не тянут — ручки скрыты. */
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 42%) minmax(0, 1fr);
+  }
+
+  .pane-resizer {
+    display: none;
+  }
+
+  .review-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .brand span:not(.brand-mark) {
+    display: none;
+  }
+
+  /* Имя документа важнее ширины поиска: по нему человек понимает, какую версию
+     статьи он сейчас читает. */
+  .document-controls {
+    min-width: 200px;
+    max-width: none;
+  }
+
+  .document-select {
+    min-width: 96px;
+  }
+
+  .search-box {
+    min-width: 92px;
+    max-width: 190px;
+    flex: 0 1 auto;
   }
 }

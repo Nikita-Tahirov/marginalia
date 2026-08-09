@@ -35,3 +35,24 @@ extra: .import-notice
 # видеть, что теперь это делается за него.
 extra: .save-state
 extra: .save-state[data-state=failed]
+
+# Планшет в альбомной ориентации: оглавление уходит, две панели остаются.
+extra: @media (width<=1040px) || :root
+extra: @media (width<=1040px) || .workspace
+extra: @media (width<=1040px) || .toc-bar
+extra: @media (width<=1040px) || .pane-resizer[data-resize=toc]
+extra: @media (width<=1040px) || .search-box
+
+# Планшет в книжной ориентации: колонки не помещаются рядом, рецензия встаёт
+# над документом, ручки изменения ширины скрыты.
+extra: @media (width<=860px) || .workspace
+extra: @media (width<=860px) || .pane-resizer
+extra: @media (width<=860px) || .review-pane
+extra: @media (width<=860px) || .brand span:not(.brand-mark)
+extra: @media (width<=860px) || .document-controls
+extra: @media (width<=860px) || .document-select
+extra: @media (width<=860px) || .search-box
+
+# Нижняя граница раскладки опущена с настольной до планшетной: ниже 980px макет
+# полагался на горизонтальную прокрутку, а приложение перестраивает колонки.
+differs: .app-shell -> min-width

@@ -373,6 +373,38 @@ test("keeps working when the browser forbids storage", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("fits desktop and tablet widths without sideways scrolling", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const layout = () =>
+    page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      columns: getComputedStyle(document.querySelector(".workspace")).gridTemplateColumns.split(" ").length,
+      toc: getComputedStyle(document.querySelector("#toc-bar")).display !== "none",
+      documentVisible: !document.querySelector("#document-body").hidden,
+    }));
+
+  // Настольная ширина: документ, рецензия и оглавление рядом.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(async () => (await layout()).columns).toBe(5);
+  expect((await layout()).toc).toBe(true);
+  expect((await layout()).overflow).toBe(false);
+
+  // Планшет в альбомной ориентации: оглавление уходит, две панели остаются.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect.poll(async () => (await layout()).toc).toBe(false);
+  expect((await layout()).columns).toBe(3);
+  expect((await layout()).overflow).toBe(false);
+
+  // Планшет в книжной ориентации: одна колонка, документ по-прежнему виден.
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await expect.poll(async () => (await layout()).columns).toBe(1);
+  expect((await layout()).overflow).toBe(false);
+  expect((await layout()).documentVisible).toBe(true);
+  await expect(page.locator("#document-select")).toContainText("article.md");
+});
+
 test("resizes panes by pointer and keyboard and remembers the widths", async ({ page }) => {
   await page.goto("/");
   const paneWidths = () =>
