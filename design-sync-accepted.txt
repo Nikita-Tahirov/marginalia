@@ -64,3 +64,11 @@ differs: .app-shell -> min-width
 differs: @import
 differs: @font-face -> количество
 differs: @font-face[0] -> font-display,font-family,src,unicode-range
+
+# Полоса о том, где живёт рецензия, и кнопка установки приложения. В макете их
+# нет: там нечего хранить, а устойчивость браузерного хранилища выдаётся только
+# установленному приложению — это поведение среды, а не решение оформления.
+extra: .storage-notice
+extra: .storage-notice[hidden]
+extra: .storage-notice p
+extra: .storage-notice .btn

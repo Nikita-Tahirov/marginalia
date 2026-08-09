@@ -82,6 +82,17 @@ export function storageAvailable() {
 // взаимодействия, а прочие браузеры — при нехватке места на диске. Просить
 // устойчивость имеет смысл в момент, когда появились данные, которые больно
 // потерять, а не при первом открытии пустого приложения.
+// Узнать состояние, ничего не запрашивая: показать положение дел можно и до
+// того, как появится повод просить устойчивость.
+export async function storageIsPersistent() {
+  if (!navigator.storage?.persisted) return false;
+  try {
+    return await navigator.storage.persisted();
+  } catch {
+    return false;
+  }
+}
+
 export async function requestPersistence() {
   if (!navigator.storage?.persist) return false;
   try {

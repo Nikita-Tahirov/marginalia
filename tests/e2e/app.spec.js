@@ -351,6 +351,20 @@ test("reopens an exported review and warns when it belongs to another version", 
   await expect(page.locator("#import-notice")).toContainText("другой версии статьи");
 });
 
+test("explains where the review lives only once there is something to lose", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#storage-notice")).toBeHidden();
+
+  // Открытая статья ещё ничего не стоит: терять пока нечего.
+  await loadMarkdown(page);
+  await expect(page.locator("#storage-notice")).toBeHidden();
+
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание, которое жалко потерять.");
+  await expect(page.locator("#storage-notice")).toBeVisible();
+  await expect(page.locator("#storage-notice-text")).toContainText("хранятся в этом браузере");
+});
+
 test("announces an update once it has already been applied", async ({ page }) => {
   await page.goto("/");
   // Так выглядит возвращение человека, у которого приложение обновилось между

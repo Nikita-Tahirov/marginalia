@@ -19,10 +19,20 @@ import {
   listDocuments,
   loadReview,
   requestPersistence,
+  storageIsPersistent,
   saveDocument,
   saveReview as storeReview,
 } from "./storage.js";
 import { noticeAfterUpdate } from "./updates.js";
+import {
+  canPromptInstall,
+  isAppleMobile,
+  isInstalled,
+  persistDeclined,
+  promptInstall,
+  rememberPersistDecline,
+  watchInstallOffer,
+} from "./install.js";
 import "./panes.js";
 
 const elements = {
@@ -34,6 +44,9 @@ const elements = {
   openReview: document.querySelector("#open-review"),
   addVersion: document.querySelector("#add-version"),
   deleteDocument: document.querySelector("#delete-document"),
+  storageNotice: document.querySelector("#storage-notice"),
+  storageNoticeText: document.querySelector("#storage-notice-text"),
+  installApp: document.querySelector("#install-app"),
   importNotice: document.querySelector("#import-notice"),
   saveState: document.querySelector("#save-state"),
   searchInput: document.querySelector("#search-input"),
@@ -76,6 +89,7 @@ const state = {
   // по имени файла: «статья_v2.md» и «статья_финал.md» для эвристики неразличимы.
   versionTarget: null,
   persistenceRequested: false,
+  persistent: false,
 };
 
 function activeDocument() {
@@ -450,11 +464,33 @@ async function persistReview(doc) {
   // Устойчивость просим в момент, когда появились данные, которые больно
   // потерять: на пустом приложении запрос выглядел бы беспричинным. Браузер
   // отказывает свежему сайту без истории посещений, поэтому попытку повторяем
-  // в каждом сеансе, пока режим не выдан, — а не один раз навсегда.
-  if (!state.persistenceRequested && doc.entries.length) {
+  // в каждом сеансе, пока режим не выдан, — а не один раз навсегда. Firefox
+  // спрашивает человека диалогом: его отказ запоминаем и не переспрашиваем.
+  if (!state.persistenceRequested && doc.entries.length && !persistDeclined()) {
     state.persistenceRequested = true;
     state.persistent = await requestPersistence();
+    if (!state.persistent) rememberPersistDecline();
+    showStorageNotice();
   }
+}
+
+// Человек должен знать, где лежит его работа, — но узнавать это не постфактум
+// и не из пустого экрана. Пока рецензии нет, говорить не о чем; как только она
+// появилась, а браузер устойчивость не дал, показываем положение дел и
+// единственное действие, которое его меняет.
+function showStorageNotice() {
+  const hasReview = state.documents.some((doc) => doc.entries.length);
+  const secure = state.persistent || isInstalled();
+  elements.storageNotice.hidden = !hasReview || secure;
+  if (elements.storageNotice.hidden) return;
+
+  const canInstall = canPromptInstall();
+  elements.installApp.hidden = !canInstall;
+  elements.storageNoticeText.textContent = canInstall
+    ? "Рецензии хранятся в этом браузере. Установите приложение — тогда браузер не удалит их при нехватке места."
+    : isAppleMobile()
+      ? "Рецензии хранятся в этом браузере. Safari очищает данные сайтов, которыми не пользовались неделю: добавьте приложение на экран «Домой» через меню «Поделиться»."
+      : "Рецензии хранятся в этом браузере. Добавьте страницу в закладки или установите приложение, чтобы браузер их не удалял.";
 }
 
 function familySize(familyId) {
@@ -1074,7 +1110,18 @@ async function restoreWorkspace() {
   const reviews = await Promise.all(stored.map((item) => loadReview(item.id)));
   state.documents = stored.map((item, index) => restoreDocument(item, reviews[index]));
   activateDocument(state.documents.at(-1).id);
+  // Возвращаясь к накопленной рецензии, человек должен видеть, насколько
+  // надёжно она лежит, — а не только в тот сеанс, когда её создавал.
+  state.persistent = await storageIsPersistent();
+  showStorageNotice();
 }
+
+elements.installApp.addEventListener("click", async () => {
+  const accepted = await promptInstall();
+  if (accepted) showToast("Приложение установлено. Рецензии теперь под защитой браузера.");
+  showStorageNotice();
+});
+watchInstallOffer(showStorageNotice);
 
 restoreTheme();
 updateHeader();
