@@ -56,3 +56,11 @@ extra: @media (width<=860px) || .search-box
 # Нижняя граница раскладки опущена с настольной до планшетной: ниже 980px макет
 # полагался на горизонтальную прокрутку, а приложение перестраивает колонки.
 differs: .app-shell -> min-width
+
+# Макет берёт Cormorant Garamond и Lora у Google по @import. Приложение держит
+# их подмножества рядом с собой: иначе Google получал бы адрес каждого читателя
+# при открытии, а без сети заголовки теряли бы начертание. Отсюда исчезнувший
+# @import и тринадцать блоков @font-face вместо одного иконочного.
+differs: @import
+differs: @font-face -> количество
+differs: @font-face[0] -> font-display,font-family,src,unicode-range
