@@ -919,14 +919,38 @@ function openPreview() {
   elements.previewDialog.showModal();
 }
 
-function toggleTheme() {
-  state.theme = state.theme === "light" ? "dark" : "light";
-  document.documentElement.dataset.theme = state.theme;
-  const dark = state.theme === "dark";
+const THEME_KEY = "marginalia:theme";
+
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  const dark = theme === "dark";
   elements.themeToggle.title = dark ? "Светлая тема" : "Тёмная тема";
   elements.themeToggle.querySelector(".sr-only").textContent = dark
     ? "Включить светлую тему"
     : "Включить тёмную тему";
+}
+
+function toggleTheme() {
+  applyTheme(state.theme === "light" ? "dark" : "light");
+  try {
+    localStorage.setItem(THEME_KEY, state.theme);
+  } catch {
+    // Хранилище запрещено — тема просто не переживёт перезагрузку.
+  }
+}
+
+// Работа переживает перезагрузку, и выбранная тема тоже должна: возвращаться
+// каждый вечер к светлому экрану, однажды выбрав тёмный, — мелкая, но заметная
+// несуразность.
+function restoreTheme() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(THEME_KEY);
+  } catch {
+    saved = null;
+  }
+  if (saved === "dark" || saved === "light") applyTheme(saved);
 }
 
 elements.openFiles.addEventListener("click", () => elements.fileInput.click());
@@ -1052,6 +1076,7 @@ async function restoreWorkspace() {
   activateDocument(state.documents.at(-1).id);
 }
 
+restoreTheme();
 updateHeader();
 renderFilters();
 renderReview();

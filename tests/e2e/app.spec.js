@@ -242,6 +242,10 @@ test("supports keyboard creation, activation, theme and empty or rejected files"
 
   await page.locator("#theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+  // Раз работа переживает перезагрузку, выбранная тема тоже обязана.
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
 test("keeps the keyboard quote toolbar open on a deep document line", async ({ page }) => {
