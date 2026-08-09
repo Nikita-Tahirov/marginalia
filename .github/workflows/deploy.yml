@@ -1,0 +1,35 @@
+name: Публикация
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Ставим браузер и прогоняем весь контур: выкладывать непроверенную
+      # версию туда, где человек ведёт рецензию неделями, нельзя.
+      - run: pnpm run test:setup
+      - run: pnpm test
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0.11.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MY_NIKITA_TOOLS }}
+          projectId: my-nikita-tools
+          target: app
+          channelId: live
