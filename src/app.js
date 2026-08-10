@@ -71,6 +71,18 @@ const elements = {
   previewDialog: document.querySelector("#preview-dialog"),
   previewContent: document.querySelector("#preview-content"),
   closePreview: document.querySelector("#close-preview"),
+  pasteText: document.querySelector("#paste-text"),
+  pasteDialog: document.querySelector("#paste-dialog"),
+  pasteInput: document.querySelector("#paste-input"),
+  submitPaste: document.querySelector("#submit-paste"),
+  cancelPaste: document.querySelector("#cancel-paste"),
+  closePaste: document.querySelector("#close-paste"),
+  renameDocument: document.querySelector("#rename-document"),
+  renameDialog: document.querySelector("#rename-dialog"),
+  renameInput: document.querySelector("#rename-input"),
+  submitRename: document.querySelector("#submit-rename"),
+  cancelRename: document.querySelector("#cancel-rename"),
+  closeRename: document.querySelector("#close-rename"),
 };
 
 const state = {
@@ -144,6 +156,7 @@ function updateHeader() {
   elements.addGeneral.disabled = !doc;
   elements.openReview.disabled = !doc;
   elements.addVersion.disabled = !doc;
+  elements.renameDocument.disabled = !doc;
   elements.deleteDocument.disabled = !doc;
 
   elements.documentSelect.replaceChildren();
@@ -509,6 +522,45 @@ function familySize(familyId) {
   return state.documents.filter((doc) => doc.familyId === familyId).length;
 }
 
+// Текст статьи попадает в приложение двумя путями — файлом и вставкой, — но
+// документом становится одинаково: по содержимому, а не по способу доставки.
+async function ingestText(text, name, versionTarget = null) {
+  const sha256 = await sha256Hex(text);
+
+  // Тот же текст — тот же документ: иначе список за месяц зарастёт копиями,
+  // а рецензия к каждой копии начнётся заново.
+  let known = state.documents.find((doc) => doc.sha256 === sha256) ?? null;
+  if (!known) {
+    const stored = await findByHash(sha256);
+    if (stored) {
+      known = restoreDocument(stored, await loadReview(stored.id));
+      state.documents.push(known);
+    }
+  }
+  if (known) {
+    showToast(`«${known.name}» уже открыт — показана прежняя рецензия.`);
+    return known;
+  }
+
+  const id = crypto.randomUUID();
+  const family = versionTarget ?? id;
+  const doc = {
+    id,
+    name,
+    text,
+    sha256,
+    familyId: family,
+    version: familySize(family) + 1,
+    createdAt: Date.now(),
+    lineData: splitPhysicalLines(text),
+    entries: [],
+    sequence: 0,
+  };
+  state.documents.push(doc);
+  await persistDocument(doc);
+  return doc;
+}
+
 async function loadFiles(fileList) {
   const files = [...fileList];
   const versionTarget = state.versionTarget;
@@ -521,42 +573,7 @@ async function loadFiles(fileList) {
       continue;
     }
     try {
-      const text = await file.text();
-      const sha256 = await sha256Hex(text);
-
-      // Тот же файл — тот же документ: иначе список за месяц зарастёт копиями,
-      // а рецензия к каждой копии начнётся заново.
-      let known = state.documents.find((doc) => doc.sha256 === sha256) ?? null;
-      if (!known) {
-        const stored = await findByHash(sha256);
-        if (stored) {
-          known = restoreDocument(stored, await loadReview(stored.id));
-          state.documents.push(known);
-        }
-      }
-      if (known) {
-        lastLoaded = known;
-        showToast(`«${known.name}» уже открыт — показана прежняя рецензия.`);
-        continue;
-      }
-
-      const id = crypto.randomUUID();
-      const family = versionTarget ?? id;
-      const doc = {
-        id,
-        name: file.name,
-        text,
-        sha256,
-        familyId: family,
-        version: familySize(family) + 1,
-        createdAt: Date.now(),
-        lineData: splitPhysicalLines(text),
-        entries: [],
-        sequence: 0,
-      };
-      state.documents.push(doc);
-      await persistDocument(doc);
-      lastLoaded = doc;
+      lastLoaded = (await ingestText(await file.text(), file.name, versionTarget)) ?? lastLoaded;
     } catch (error) {
       showToast(`Не удалось прочитать «${file.name}»: ${error.message}`, "error");
     }
@@ -566,6 +583,99 @@ async function loadFiles(fileList) {
     activateDocument(lastLoaded.id);
     if (lastLoaded.version > 1) showToast(`Открыта версия ${lastLoaded.version}: «${lastLoaded.name}».`);
   }
+}
+
+// Имя различает статьи в списке и становится именем файла рецензии, поэтому
+// символы, которые файловая система не примет, убираем сразу.
+function cleanName(value) {
+  return String(value ?? "")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+// У вставленного текста нет имени файла, а «Вставленный текст» в списке из
+// нескольких статей бесполезен. Вводная часть объявляет заглавие явно, поэтому
+// она главнее первого заголовка; переименовать вручную можно всегда.
+function documentName(text) {
+  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  const titled = front && /^title:\s*(.+)$/m.exec(front[1]);
+  const heading = /^#{1,6}\s+(.+)$/m.exec(text);
+  const raw = (titled?.[1] ?? heading?.[1] ?? "").trim().replace(/^["']|["']$/g, "");
+  return cleanName(raw) || "Вставленный текст";
+}
+
+async function openPastedText(text) {
+  const versionTarget = state.versionTarget;
+  state.versionTarget = null;
+  try {
+    const doc = await ingestText(text, documentName(text), versionTarget);
+    if (doc) activateDocument(doc.id);
+  } catch (error) {
+    showToast(`Не удалось открыть текст: ${error.message}`, "error");
+  }
+}
+
+function openPasteDialog() {
+  elements.pasteInput.value = "";
+  elements.pasteDialog.showModal();
+  elements.pasteInput.focus();
+}
+
+// Буфер читаем сразу в обработчике нажатия: любое ожидание до вызова стирает
+// пользовательский жест, без которого браузер читать буфер не даёт. Firefox и
+// Safari вдобавок показывают собственное меню «Вставить» — отказ от него, запрет
+// в настройках и отсутствие самого метода приходят сюда одинаково, и на каждый
+// случай остаётся один и тот же ответ: вставить руками.
+function pasteFromClipboard() {
+  const reading = navigator.clipboard?.readText?.();
+  if (!reading?.then) {
+    openPasteDialog();
+    return;
+  }
+  reading.then(
+    (text) => {
+      // Пустая строка означает «в буфере нет текста», а не отказ: открывать
+      // окно ручной вставки здесь не за чем — вставлять человеку нечего.
+      if (!text?.trim()) {
+        showToast("Нет текста в буфере.", "error");
+        return;
+      }
+      openPastedText(text);
+    },
+    () => openPasteDialog(),
+  );
+}
+
+// Имя из одних пробелов или из одних недопустимых символов после очистки пусто:
+// сохранять нечего. Гасим «Сохранить», как и у общего замечания, — человек
+// видит, что действие недоступно, вместо кнопки, которая молча не работает.
+function syncRenameButton() {
+  elements.submitRename.disabled = !cleanName(elements.renameInput.value);
+}
+
+function openRenameDialog() {
+  const doc = activeDocument();
+  if (!doc) return;
+  elements.renameInput.value = doc.name;
+  syncRenameButton();
+  elements.renameDialog.showModal();
+  elements.renameInput.select();
+}
+
+// Рецензия привязана к документу по его идентификатору, а не по имени, поэтому
+// переименование её не задевает: меняется только то, что человек видит и
+// получает в имени выгруженного файла.
+async function renameActiveDocument() {
+  const doc = activeDocument();
+  const name = cleanName(elements.renameInput.value);
+  if (!doc || !name) return;
+  doc.name = name;
+  elements.renameDialog.close();
+  await persistDocument(doc);
+  updateHeader();
+  showToast(`Статья названа «${name}».`);
 }
 
 async function removeActiveDocument() {
@@ -1002,6 +1112,32 @@ function restoreTheme() {
 elements.openFiles.addEventListener("click", () => elements.fileInput.click());
 elements.openFilesEmpty.addEventListener("click", () => elements.fileInput.click());
 elements.fileInput.addEventListener("change", () => loadFiles(elements.fileInput.files));
+elements.pasteText.addEventListener("click", pasteFromClipboard);
+elements.submitPaste.addEventListener("click", () => {
+  const text = elements.pasteInput.value;
+  // В этом окне буфер ни при чём: человек смотрит на собственное пустое поле,
+  // и говорить ему про буфер значило бы объяснять не то, что он видит.
+  if (!text.trim()) {
+    showToast("Поле пустое: вставьте текст статьи.", "error");
+    elements.pasteInput.focus();
+    return;
+  }
+  elements.pasteDialog.close();
+  openPastedText(text);
+});
+elements.cancelPaste.addEventListener("click", () => elements.pasteDialog.close());
+elements.closePaste.addEventListener("click", () => elements.pasteDialog.close());
+elements.renameDocument.addEventListener("click", openRenameDialog);
+elements.submitRename.addEventListener("click", renameActiveDocument);
+elements.cancelRename.addEventListener("click", () => elements.renameDialog.close());
+elements.closeRename.addEventListener("click", () => elements.renameDialog.close());
+elements.renameInput.addEventListener("input", syncRenameButton);
+elements.renameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    renameActiveDocument();
+  }
+});
 elements.documentSelect.addEventListener("change", () => activateDocument(elements.documentSelect.value));
 elements.themeToggle.addEventListener("click", toggleTheme);
 elements.copyReview.addEventListener("click", copyReview);

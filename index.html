@@ -45,6 +45,11 @@
           <button id="open-files" class="btn btn-secondary compact-btn" type="button">
             Открыть .md
           </button>
+          <!-- Текст статьи чаще приходит письмом или из редактора, чем файлом:
+               сохранять его на диск ради вычитки — лишний шаг. -->
+          <button id="paste-text" class="btn btn-secondary compact-btn" type="button">
+            Вставить
+          </button>
           <input
             id="file-input"
             class="sr-only"
@@ -64,6 +69,20 @@
               <rect x="1.6" y="1.6" width="8" height="9.6" rx="1.4"></rect>
               <path d="M5.4 13.4h6.2a1.4 1.4 0 0 0 1.4-1.4V5.2"></path>
               <path d="M4.2 6.4h3.2M5.8 4.8v3.2"></path>
+            </svg>
+          </button>
+          <button
+            id="rename-document"
+            class="btn btn-secondary action-button"
+            type="button"
+            data-tooltip="Переименовать"
+            aria-label="Переименовать статью"
+            disabled
+          >
+            <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M2.4 12.6h10.2"></path>
+              <path d="M3.6 10.1l6.1-6.1 1.9 1.9-6.1 6.1H3.6z"></path>
+              <path d="M9.7 4l1.1-1.1a.9.9 0 0 1 1.3 0l.6.6a.9.9 0 0 1 0 1.3L11.6 5.9"></path>
             </svg>
           </button>
           <button
@@ -250,6 +269,34 @@
           <button id="close-preview" class="btn btn-icon" type="button" aria-label="Закрыть">×</button>
         </div>
         <pre id="preview-content" tabindex="0"></pre>
+      </dialog>
+
+      <!-- Запасной путь для браузеров, которые не дают странице читать буфер
+           сама: вставка руками остаётся тем же жестом человека. -->
+      <dialog id="paste-dialog" class="text-dialog">
+        <div class="dialog-heading">
+          <h2>Вставьте текст статьи</h2>
+          <button id="close-paste" class="btn btn-icon" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <p class="dialog-hint">Браузер не дал прочитать буфер сам. Вставьте текст в поле — ⌘/Ctrl+V.</p>
+        <textarea id="paste-input" class="input" rows="12" aria-label="Текст статьи"></textarea>
+        <div class="dialog-actions">
+          <button id="submit-paste" class="btn btn-primary compact-btn" type="button">Открыть</button>
+          <button id="cancel-paste" class="btn btn-ghost compact-btn" type="button">Отмена</button>
+        </div>
+      </dialog>
+
+      <dialog id="rename-dialog" class="text-dialog">
+        <div class="dialog-heading">
+          <h2>Название статьи</h2>
+          <button id="close-rename" class="btn btn-icon" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <p class="dialog-hint">Название видно в списке документов и станет именем файла рецензии.</p>
+        <input id="rename-input" class="input" type="text" aria-label="Название статьи" />
+        <div class="dialog-actions">
+          <button id="submit-rename" class="btn btn-primary compact-btn" type="button">Сохранить</button>
+          <button id="cancel-rename" class="btn btn-ghost compact-btn" type="button">Отмена</button>
+        </div>
       </dialog>
     </div>
     <script type="module" src="/src/app.js"></script>

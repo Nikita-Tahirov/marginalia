@@ -91,3 +91,12 @@ extra: .document-body pre code
 # строки уже высказывание. Надпись «Напишите комментарий» вместе со своим
 # классом исчезла — сообщать больше не о чем.
 missing: .draft-error
+
+# Окна ручной вставки текста и переименования статьи. В макете их нет: там
+# документ приходил только файлом и назывался только именем этого файла.
+extra: .text-dialog
+extra: .text-dialog::backdrop
+extra: .text-dialog .input
+extra: .text-dialog textarea.input
+extra: .dialog-hint
+extra: .dialog-actions

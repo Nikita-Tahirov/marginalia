@@ -594,3 +594,136 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await page.locator("#draft-comment").fill("   ");
   await expect(commit).toBeDisabled();
 });
+
+test("opens pasted text from the clipboard, by hand and reports an empty buffer", async ({ page }) => {
+  const pasted = "---\ntitle: Статья из буфера\n---\n\n# Заголовок вставки\n\nПервый абзац.\n";
+
+  await page.addInitScript(() => {
+    window.__clipboard = { mode: "reject", text: "" };
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: () =>
+          window.__clipboard.mode === "reject"
+            ? Promise.reject(new DOMException("denied", "NotAllowedError"))
+            : Promise.resolve(window.__clipboard.text),
+        writeText: (value) => Promise.resolve(value),
+      },
+    });
+  });
+  await page.goto("/");
+
+  // Буфер прочитан: документ открывается сразу, окно не нужно.
+  await page.evaluate((text) => {
+    window.__clipboard = { mode: "resolve", text };
+  }, pasted);
+  await page.locator("#paste-text").click();
+  await expect(page.locator("#document-select")).toContainText("Статья из буфера");
+  await expect(page.locator("#document-body")).toContainText("Первый абзац.");
+  await expect(page.locator("#paste-dialog")).not.toBeVisible();
+
+  // В буфере нет текста: человеку сообщают об этом, окно не открывается.
+  await page.evaluate(() => {
+    window.__clipboard = { mode: "resolve", text: "   " };
+  });
+  await page.locator("#paste-text").click();
+  await expect(page.locator("#toast")).toHaveText("Нет текста в буфере.");
+  await expect(page.locator("#paste-dialog")).not.toBeVisible();
+
+  // Браузер не дал прочитать буфер: остаётся ручная вставка.
+  await page.evaluate(() => {
+    window.__clipboard = { mode: "reject", text: "" };
+  });
+  await page.locator("#paste-text").click();
+  await expect(page.locator("#paste-dialog")).toBeVisible();
+  await page.locator("#paste-input").fill("Текст без заголовка и вводной части.\n");
+  await page.locator("#submit-paste").click();
+  await expect(page.locator("#paste-dialog")).not.toBeVisible();
+  // Ни заголовка, ни поля title — остаётся честное общее имя.
+  await expect(page.locator("#document-select")).toContainText("Вставленный текст");
+  await expect(page.locator("#document-body")).toContainText("Текст без заголовка");
+});
+
+test("renames the article without loosening its grip on the review", async ({ page }) => {
+  // Без File System Access API «Скачать» уходит обычной загрузкой, и имя файла
+  // видно прямо в ней.
+  await page.addInitScript(() => {
+    delete window.showSaveFilePicker;
+  });
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание до переименования.");
+
+  await page.locator("#rename-document").click();
+  await expect(page.locator("#rename-input")).toHaveValue("article.md");
+  // Двоеточие и слэш непригодны для имени файла — их вычищает само приложение.
+  await page.locator("#rename-input").fill("Автореферат: ревизия 09/07");
+  await page.locator("#submit-rename").click();
+  await expect(page.locator("#rename-dialog")).not.toBeVisible();
+  await expect(page.locator("#document-select")).toContainText("Автореферат ревизия 09 07");
+
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText('"name":"Автореферат ревизия 09 07"');
+  await page.locator("#close-preview").click();
+
+  const download = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#save-review").click(),
+  ]).then(([event]) => event);
+  expect(download.suggestedFilename()).toBe("Автореферат ревизия 09 07.review.md");
+
+  // Рецензия висит на идентификаторе документа, поэтому имя её не задевает.
+  await page.reload();
+  await expect(page.locator("#document-select")).toContainText("Автореферат ревизия 09 07");
+  await expect(page.locator(".review-card")).toContainText("Замечание до переименования.");
+});
+
+test("refuses an empty name and an empty paste in a way the reader can see", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: () => Promise.reject(new DOMException("denied", "NotAllowedError")),
+        writeText: (value) => Promise.resolve(value),
+      },
+    });
+  });
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  // Пустое поле в окне ручной вставки: буфер здесь ни при чём, и сообщение
+  // говорит про поле, а не про него.
+  await page.locator("#paste-text").click();
+  await expect(page.locator("#paste-dialog")).toBeVisible();
+  await page.locator("#submit-paste").click();
+  await expect(page.locator("#toast")).toHaveText("Поле пустое: вставьте текст статьи.");
+  await expect(page.locator("#paste-dialog")).toBeVisible();
+  // Escape закрывает окно, и оно открывается снова чистым.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#paste-dialog")).not.toBeVisible();
+  await page.locator("#paste-text").click();
+  await expect(page.locator("#paste-input")).toHaveValue("");
+  await page.locator("#cancel-paste").click();
+
+  // Имя, которое после очистки пусто, сохранить нельзя — и это видно по кнопке.
+  await page.locator("#rename-document").click();
+  const save = page.locator("#submit-rename");
+  await expect(save).toBeEnabled();
+  await page.locator("#rename-input").fill("   ");
+  await expect(save).toBeDisabled();
+  await page.locator("#rename-input").fill("///");
+  await expect(save).toBeDisabled();
+  await page.locator("#rename-input").fill("Новое имя");
+  await expect(save).toBeEnabled();
+
+  // Enter в поле имени равнозначен кнопке «Сохранить».
+  await page.locator("#rename-input").press("Enter");
+  await expect(page.locator("#rename-dialog")).not.toBeVisible();
+  await expect(page.locator("#document-select")).toContainText("Новое имя");
+
+  await page.locator("#rename-document").click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rename-dialog")).not.toBeVisible();
+  await expect(page.locator("#document-select")).toContainText("Новое имя");
+});

@@ -1198,8 +1198,44 @@ body[data-resizing] {
   box-shadow: var(--shadow-lg);
 }
 
-.preview-dialog::backdrop {
+.text-dialog {
+  width: min(620px, calc(100vw - 64px));
+  padding: 0 0 var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.preview-dialog::backdrop,
+.text-dialog::backdrop {
   background: rgb(32 31 29 / 54%);
+}
+
+.dialog-hint {
+  margin: var(--space-3) var(--space-4) var(--space-2);
+  color: var(--color-neutral-600);
+  font-size: 12px;
+}
+
+.text-dialog .input {
+  display: block;
+  width: calc(100% - var(--space-4) * 2);
+  margin: 0 var(--space-4);
+  background: var(--color-bg);
+  font-size: 13px;
+}
+
+.text-dialog textarea.input {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) 0;
 }
 
 .dialog-heading {
