@@ -406,7 +406,9 @@ test("keeps working when the browser forbids storage", async ({ page }) => {
 
 test("fits desktop and tablet widths without sideways scrolling", async ({ page }) => {
   await page.goto("/");
-  await loadMarkdown(page);
+  // Имя настоящей статьи, а не короткое «article.md»: ширину поля определяет
+  // длина имени, и на коротком теснота в шапке просто не проявляется.
+  await loadMarkdown(page, "2026.07.02_автореферат.md");
 
   const layout = () =>
     page.evaluate(() => ({
@@ -414,6 +416,10 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
       columns: getComputedStyle(document.querySelector(".workspace")).gridTemplateColumns.split(" ").length,
       toc: getComputedStyle(document.querySelector("#toc-bar")).display !== "none",
       documentVisible: !document.querySelector("#document-body").hidden,
+      // Имя статьи должно читаться на месте: иначе за ним придётся лезть в
+      // раскрытый список — так и случилось, когда в шапку добавили две кнопки.
+      documentNameWidth: document.querySelector("#document-select").getBoundingClientRect().width,
+      documentNameTitle: document.querySelector("#document-select").title,
     }));
 
   // Настольная ширина: документ, рецензия и оглавление рядом.
@@ -421,19 +427,25 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
   await expect.poll(async () => (await layout()).columns).toBe(5);
   expect((await layout()).toc).toBe(true);
   expect((await layout()).overflow).toBe(false);
+  // Порог выше собственного минимума поля: он проверяет, что место под имя
+  // даёт сам контейнер, а не то, что поле упёрлось в min-width и продавило
+  // соседние кнопки.
+  expect((await layout()).documentNameWidth).toBeGreaterThanOrEqual(240);
+  expect((await layout()).documentNameTitle).toBe("2026.07.02_автореферат.md · 9 стр.");
 
   // Планшет в альбомной ориентации: оглавление уходит, две панели остаются.
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect.poll(async () => (await layout()).toc).toBe(false);
   expect((await layout()).columns).toBe(3);
   expect((await layout()).overflow).toBe(false);
+  expect((await layout()).documentNameWidth).toBeGreaterThanOrEqual(180);
 
   // Планшет в книжной ориентации: одна колонка, документ по-прежнему виден.
   await page.setViewportSize({ width: 768, height: 1024 });
   await expect.poll(async () => (await layout()).columns).toBe(1);
   expect((await layout()).overflow).toBe(false);
   expect((await layout()).documentVisible).toBe(true);
-  await expect(page.locator("#document-select")).toContainText("article.md");
+  await expect(page.locator("#document-select")).toContainText("2026.07.02_автореферат.md");
 });
 
 test("resizes panes by pointer and keyboard and remembers the widths", async ({ page }) => {

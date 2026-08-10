@@ -172,6 +172,9 @@ function updateHeader() {
       option.selected = item.id === state.activeDocumentId;
       elements.documentSelect.append(option);
     }
+    // Длинное имя всё равно упрётся в ширину поля: подсказка показывает его
+    // целиком, не заставляя раскрывать список ради одного взгляда.
+    elements.documentSelect.title = doc ? `${doc.name} · ${doc.lineData.lines.length} стр.` : "";
   }
 
   const count = doc?.entries.length ?? 0;

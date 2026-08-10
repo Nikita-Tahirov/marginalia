@@ -161,37 +161,35 @@
             >
               <span class="mi" aria-hidden="true">add_comment</span>
             </button>
-            <span class="sort-label">по порядку строк</span>
-            <button
-              id="open-review"
-              class="btn btn-secondary action-button"
-              type="button"
-              data-tooltip="Открыть рецензию"
-              aria-label="Открыть сохранённую рецензию из файла"
-              disabled
-            >
-              <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
-                <path d="M3 9.4v2.2a1.3 1.3 0 0 0 1.3 1.3h6.4a1.3 1.3 0 0 0 1.3-1.3V9.4"></path>
-                <path d="M7.5 2.2v7.2"></path>
-                <path d="M4.9 4.8L7.5 2.2l2.6 2.6"></path>
-              </svg>
-            </button>
-            <input
-              id="review-input"
-              class="sr-only"
-              type="file"
-              accept=".md,.markdown,text/markdown,text/plain"
-            />
-            <button
-              id="preview-review"
-              class="btn btn-secondary preview-button"
-              type="button"
-              data-tooltip="Предпросмотр"
-              aria-label="Предпросмотр"
-              disabled
-            >
-              <span class="mi" aria-hidden="true">visibility</span>
-            </button>
+            <!-- Действия с готовой рецензией держатся вместе у правого края:
+                 порознь между ними растекалось всё свободное место панели. -->
+            <div class="toolbar-actions">
+              <button
+                id="open-review"
+                class="btn btn-secondary compact-btn"
+                type="button"
+                aria-label="Открыть сохранённую рецензию из файла"
+                disabled
+              >
+                Открыть рецензию
+              </button>
+              <input
+                id="review-input"
+                class="sr-only"
+                type="file"
+                accept=".md,.markdown,text/markdown,text/plain"
+              />
+              <button
+                id="preview-review"
+                class="btn btn-secondary preview-button"
+                type="button"
+                data-tooltip="Предпросмотр"
+                aria-label="Предпросмотр"
+                disabled
+              >
+                <span class="mi" aria-hidden="true">visibility</span>
+              </button>
+            </div>
           </div>
           <p id="import-notice" class="import-notice" role="status" hidden></p>
           <div id="storage-notice" class="storage-notice" role="status" hidden>

@@ -245,16 +245,20 @@ textarea:focus-visible,
   stroke-width: 1.2;
 }
 
+/* Ширины хватает на имя статьи: рядом с ним стоят пять действий, и при прежнем
+   пределе на имя оставалось меньше сотни пикселей — прочитать его можно было
+   только раскрыв список. Свободное место в шапке для этого есть: поиск и так
+   ограничен своим максимумом. */
 .document-controls {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 225px;
-  max-width: 360px;
+  max-width: 520px;
 }
 
 .document-select {
-  min-width: 0;
+  min-width: 150px;
   flex: 1;
   height: 32px;
   padding: 4px 26px 4px 9px;
@@ -479,6 +483,10 @@ body[data-resizing] {
   flex: none;
   display: flex;
   align-items: center;
+  /* Панель тянут мышью до 300px, и на такой ширине действия рецензии уже не
+     помещаются в строку. Пусть переносятся, а не уходят за край: спрятанная
+     кнопка хуже панели в две строки. */
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px var(--space-3);
   border-bottom: 1px solid var(--color-divider);
@@ -542,11 +550,11 @@ body[data-resizing] {
   white-space: nowrap;
 }
 
-.sort-label {
+.toolbar-actions {
   margin-left: auto;
-  color: var(--color-neutral-500);
-  font-size: 10px;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .review-list {
@@ -903,7 +911,6 @@ body[data-resizing] {
 .preview-button {
   min-height: 26px;
   min-width: 26px;
-  margin-left: auto;
   padding: 0 6px;
   border-radius: var(--radius-md);
   font-size: 10px;
@@ -1331,13 +1338,12 @@ body[data-resizing] {
      рецензии были текстовыми кнопками и требовали ширины подписи. Здесь они
      иконочные, места почти не занимают и остаются доступными на узком экране,
      поэтому правило снято намеренно — расхождение с макетом принятое. */
-  .review-count,
-  .sort-label {
+  .review-count {
     display: none;
   }
 
   .document-controls {
-    max-width: 300px;
+    max-width: 460px;
   }
 }
 

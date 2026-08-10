@@ -105,3 +105,21 @@ extra: .dialog-actions
 # внутри блочный элемент, из-за чего её ширина растягивается и номер уезжает
 # из колонки. В макете номера в колонку не собирались, поэтому правила нет.
 extra: .document-body .thematic-line .source-line
+
+# Имя статьи не читалось на месте: рядом с ним встали пять действий, и на имя
+# оставалось меньше сотни пикселей. Контейнеру дан больший предел, полю — свой
+# минимум; свободное место в шапке для этого было, поиск и так ограничен.
+differs: .document-controls -> max-width
+differs: .document-select -> min-width
+differs: @media (width<=1180px) || .document-controls -> max-width
+
+# Подпись «по порядку строк» убрана: порядок и так виден по номерам строк, а
+# её margin-left растаскивал действия рецензии по краям панели. Теперь они
+# держатся вместе у правого края, а «Открыть рецензию» стала кнопкой со словами.
+missing: .sort-label
+missing: @media (width<=1180px) || .sort-label
+extra: .toolbar-actions
+differs: .preview-button -> margin-left
+
+# Панель рецензии тянут мышью до 300px, где действия уже не помещаются в строку.
+differs: .review-toolbar -> flex-wrap
