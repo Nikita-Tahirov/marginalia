@@ -86,3 +86,8 @@ differs: .document-body -> padding
 differs: .document-body pre -> overflow
 differs: .document-body pre -> overflow-x
 extra: .document-body pre code
+
+# Замечание с привязкой стало можно оставлять без слов: тип и процитированные
+# строки уже высказывание. Надпись «Напишите комментарий» вместе со своим
+# классом исчезла — сообщать больше не о чем.
+missing: .draft-error

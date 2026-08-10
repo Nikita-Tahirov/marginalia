@@ -169,6 +169,34 @@ test("a hand-edited review without the machine block is still read from its text
   assert.equal(parsed.entries[1].kind, "free");
 });
 
+test("a wordless anchored note exports without an empty gap and is read back from text", () => {
+  const wordless = { ...anchored("w", 8, 0, 8, 26, 1), comment: "", replacement: "" };
+  const exported = serializeReview([wordless]);
+  assert.equal(exported, "### Строка 8 · Правка\n\n> w\n");
+
+  const parsed = parseReview(exported);
+  assert.equal(parsed.origin, "text");
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0].kind, "anchored");
+  assert.equal(parsed.entries[0].comment, "");
+  assert.equal(parsed.entries[0].quote, "w");
+  assert.equal(serializeReview(parsed.entries), exported);
+});
+
+test("a wordless note keeps its replacement and never becomes a general note", () => {
+  const replaced = { ...anchored("r", 5, 0, 5, 3, 1), comment: "", replacement: "Новый текст" };
+  const exported = serializeReview([replaced]);
+  assert.equal(exported, "### Строка 5 · Правка\n\n> r\n\n**Заменить на:** Новый текст\n");
+
+  const parsed = parseReview(exported);
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0].comment, "");
+  assert.equal(parsed.entries[0].replacement, "Новый текст");
+
+  // Общая запись состоит из одного текста: пустая, она не запись.
+  assert.equal(parseReview("### Общее замечание\n").entries.length, 0);
+});
+
 test("a comment containing a comment terminator survives the machine block", async () => {
   const hostile = { ...anchored("h", 1, 0, 1, 2, 1), comment: "Смотри --> сюда <!-- и сюда" };
   const marked = serializeReview([hostile], { name: "a.md", sha256: "0" });

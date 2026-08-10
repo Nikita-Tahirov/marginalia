@@ -123,11 +123,13 @@ export function serializeEntry(entry) {
     return `### Общее замечание\n\n${entry.comment.trim()}`;
   }
 
-  const parts = [
-    `### ${lineHeading(entry)} · ${entry.type}`,
-    quoteBlock(entry.quote),
-    entry.comment.trim(),
-  ];
+  const parts = [`### ${lineHeading(entry)} · ${entry.type}`, quoteBlock(entry.quote)];
+
+  // Замечание без слов законно: тип и процитированные строки уже сказали, что
+  // не так. Пустую часть в файл не пишем — иначе в тексте появится провал из
+  // двух пустых строк там, где человек ничего не писал.
+  const comment = entry.comment.trim();
+  if (comment) parts.push(comment);
 
   if (entry.replacement?.trim()) {
     const replacement = entry.replacement.trim();
@@ -191,7 +193,11 @@ function parseBlock(block, index) {
   const replacementAt = rest.indexOf("**Заменить на:** ");
   const comment = (replacementAt >= 0 ? rest.slice(0, replacementAt) : rest).trim();
   const replacement = replacementAt >= 0 ? rest.slice(replacementAt + 17).trim() : "";
-  if (!comment) return null;
+  // Привязанное замечание опознано по заголовку «Строка N · Тип», поэтому
+  // пустой комментарий его не отменяет — иначе рецензия, выгруженная с
+  // бессловесными пометками, потеряла бы их при обратном чтении. Общая запись
+  // без текста пуста целиком: такую и создать нельзя, значит это не запись.
+  if (parsed.kind === "free" && !comment) return null;
 
   if (parsed.kind === "free") {
     return {

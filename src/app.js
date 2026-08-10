@@ -213,7 +213,7 @@ function anchoredCard(entry) {
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${entry.id}" aria-label="Удалить замечание">×</button>
     </header>
     <blockquote>${renderMultiline(entry.quote)}</blockquote>
-    <p class="card-comment">${renderMultiline(entry.comment)}</p>
+    ${entry.comment.trim() ? `<p class="card-comment">${renderMultiline(entry.comment)}</p>` : ""}
     ${replacement}
     <footer class="card-actions">
       <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${entry.id}">+ Общее после</button>
@@ -249,18 +249,21 @@ function typeChoices(activeType) {
 
 function draftCard(entry) {
   const anchored = entry.kind === "anchored";
+  // Привязанное замечание осмысленно и без слов: тип и процитированные строки
+  // уже высказывание. Общее замечание, наоборот, состоит из одного текста —
+  // пустое оно ничего не значит, поэтому там поле остаётся обязательным.
+  const ready = anchored || Boolean(entry.comment.trim());
   return `<article class="review-card draft-card" data-entry-id="${entry.id}">
     <header class="draft-heading">
       <span>Новое ${anchored ? "замечание" : "общее замечание"}</span>
       <span>${anchored ? lineHeading(entry).toLowerCase() : "без строки"}</span>
     </header>
     ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(entry.type)}</div>` : ""}
-    <label class="draft-label" for="draft-comment">${anchored ? "Комментарий" : "Текст общего замечания"} <span aria-hidden="true">*</span></label>
-    <textarea id="draft-comment" class="input draft-textarea" rows="4" required>${escapeHtml(entry.comment)}</textarea>
-    ${anchored ? `<label class="draft-label" for="draft-replacement">Заменить на <span>по желанию</span></label><textarea id="draft-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(entry.replacement)}</textarea>` : ""}
-    <p id="draft-error" class="draft-error" role="alert" hidden>Напишите комментарий.</p>
+    <label class="draft-label" for="draft-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
+    <textarea id="draft-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}>${escapeHtml(entry.comment)}</textarea>
+    ${anchored ? `<label class="draft-label" for="draft-replacement">Заменить на</label><textarea id="draft-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(entry.replacement)}</textarea>` : ""}
     <div class="draft-actions">
-      <button class="btn btn-primary compact-btn" type="button" data-action="commit-draft">Добавить</button>
+      <button class="btn btn-primary compact-btn" type="button" data-action="commit-draft"${ready ? "" : " disabled"}>Добавить</button>
       <button class="btn btn-ghost compact-btn" type="button" data-action="cancel-draft">Отмена</button>
       <span>⌘/Ctrl+Enter</span>
     </div>
@@ -776,12 +779,10 @@ function commitDraft() {
   const doc = activeDocument();
   if (!doc || !state.draft) return;
   syncDraftFields();
-  if (!state.draft.comment.trim()) {
-    const error = elements.reviewList.querySelector("#draft-error");
-    if (error) error.hidden = false;
-    elements.reviewList.querySelector("#draft-comment")?.focus();
-    return;
-  }
+  // Общее замечание без текста пусто целиком — добавлять нечего. Кнопка в этот
+  // момент и так неактивна, поэтому отдельной надписи об ошибке не нужно:
+  // человек видит, что действие недоступно, и понимает почему.
+  if (state.draft.kind === "free" && !state.draft.comment.trim()) return;
   const committed = { ...state.draft, status: "committed", comment: state.draft.comment.trim() };
   if (committed.kind === "anchored") committed.replacement = committed.replacement.trim();
   doc.entries.push(committed);
@@ -1033,7 +1034,15 @@ elements.filterList.addEventListener("click", (event) => {
 
 elements.reviewList.addEventListener("input", (event) => {
   if (!state.draft) return;
-  if (event.target.id === "draft-comment") state.draft.comment = event.target.value;
+  if (event.target.id === "draft-comment") {
+    state.draft.comment = event.target.value;
+    // Перерисовать карточку целиком нельзя — под руками у человека пропадёт
+    // фокус и место курсора, поэтому доступность кнопки меняем на месте.
+    if (state.draft.kind === "free") {
+      const commit = elements.reviewList.querySelector('[data-action="commit-draft"]');
+      if (commit) commit.disabled = !event.target.value.trim();
+    }
+  }
   if (event.target.id === "draft-replacement") state.draft.replacement = event.target.value;
 });
 

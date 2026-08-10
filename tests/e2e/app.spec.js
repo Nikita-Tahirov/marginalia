@@ -565,3 +565,32 @@ test("keeps every line number in one gutter column, clear of quote bars and mark
     expect(measured.overflow, `ширина ${width}`).toBe(false);
   }
 });
+
+test("adds a wordless anchored note but never a wordless general one", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  await quoteWholeLine(page, 3, "Вопрос");
+  await expect(page.locator("#draft-comment")).toBeVisible();
+  // Ни подписи «по желанию», ни надписи об ошибке в форме больше нет.
+  await expect(page.locator(".draft-card")).not.toContainText("по желанию");
+  await expect(page.locator(".draft-card")).not.toContainText("Напишите комментарий");
+  await page.locator('[data-action="commit-draft"]').click();
+
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator(".review-card .card-comment")).toHaveCount(0);
+  await expect(page.locator("#review-count")).toHaveText("1 замечание");
+
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Вопрос");
+  await page.locator("#close-preview").click();
+
+  // Общее замечание состоит из одного текста: пустым его добавить нельзя.
+  await page.locator("#add-general").click();
+  const commit = page.locator('[data-action="commit-draft"]');
+  await expect(commit).toBeDisabled();
+  await page.locator("#draft-comment").fill("Общий итог.");
+  await expect(commit).toBeEnabled();
+  await page.locator("#draft-comment").fill("   ");
+  await expect(commit).toBeDisabled();
+});
