@@ -6,12 +6,6 @@ import { buildArticle } from "./article.js";
 // 02.09.2025): 200 мс.
 const LONG_TASK_LIMIT_MS = 200;
 
-// ВНИМАНИЕ. Этот набор пока не включён в `pnpm test` как блокирующий: замер
-// действий нестабилен. В окно наблюдения попадает работа, вызванная прокруткой
-// к нужной строке, и одно и то же действие на одном и том же коде показывает от
-// 0 до 345 мс. Прежде чем делать проверку блокирующей, нужно отделить замер
-// действия от работы прокрутки — иначе она будет ронять выпуск случайно.
-//
 // Открытие диссертации целиком — отдельный случай. Разбор markdown нельзя
 // разрезать, не изменив разметку: ссылочные определения и сноски принадлежат
 // всему тексту сразу. Вынос разбора в фоновый поток измерен и отвергнут —
@@ -76,6 +70,35 @@ async function watchLongTasks(page) {
     });
     window.__longTaskObserver.observe({ type: "longtask" });
   });
+}
+
+// Замер начинается только в тишине. Иначе в окно наблюдения попадает работа,
+// вызванная предыдущим шагом — прокруткой к нужной строке, — и одно и то же
+// действие показывает то ноль, то триста миллисекунд. Мерить надо действие, а
+// не соседа.
+async function settle(page, quietMs = 400, limitMs = 15_000) {
+  await page.evaluate(
+    ({ quietMs, limitMs }) =>
+      new Promise((resolve) => {
+        let last = performance.now();
+        const observer = new PerformanceObserver((list) => {
+          if (list.getEntries().length) last = performance.now();
+        });
+        observer.observe({ type: "longtask" });
+        const started = performance.now();
+        const check = () => {
+          const now = performance.now();
+          if (now - last >= quietMs || now - started >= limitMs) {
+            observer.disconnect();
+            resolve();
+            return;
+          }
+          setTimeout(check, 100);
+        };
+        setTimeout(check, quietMs);
+      }),
+    { quietMs, limitMs },
+  );
 }
 
 async function collectLongTasks(page) {
@@ -143,9 +166,16 @@ test.describe("отзывчивость на слабом устройстве",
     await throttle(page, calibration.rate);
     await openArticle(page, 20000, "perf-actions.md");
 
+    await settle(page);
     await watchLongTasks(page);
     const line = page.locator('.source-line.line-origin[data-source-line="120"]').first();
     await line.scrollIntoViewIfNeeded();
+    const scrolling = await collectLongTasks(page);
+    report("прокрутка к дальней строке", scrolling);
+    requireWithinLimit(scrolling);
+
+    await settle(page);
+    await watchLongTasks(page);
     await line.focus();
     await line.press("Enter");
     await expect(page.locator("#quote-toolbar")).toBeVisible();
@@ -157,6 +187,7 @@ test.describe("отзывчивость на слабом устройстве",
     report("цитирование строки и добавление замечания", editing);
     requireWithinLimit(editing);
 
+    await settle(page);
     await watchLongTasks(page);
     await page.locator("#search-input").fill("методологию");
     await expect(page.locator("#search-counter")).not.toHaveText("0 / 0");
@@ -164,6 +195,7 @@ test.describe("отзывчивость на слабом устройстве",
     report("поиск по документу", searching);
     requireWithinLimit(searching);
 
+    await settle(page);
     await watchLongTasks(page);
     await page.locator('.review-card [data-action="delete"]').click();
     await expect(page.locator(".review-card")).toHaveCount(0);
