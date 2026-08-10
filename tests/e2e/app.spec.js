@@ -557,11 +557,18 @@ test("keeps every line number in one gutter column, clear of quote bars and mark
   const gutter = () =>
     page.evaluate(() => {
       const body = document.querySelector("#document-body");
+      // Номер позиционируется от ближайшего позиционированного предка — его и
+      // ищем, а не подставляем ожидаемый. Иначе замер проверял бы собственную
+      // формулу, а не то, где номер оказался на самом деле.
       const box = (span) => {
         const style = getComputedStyle(span, "::before");
-        const rect = span.getClientRects()[0];
-        const right = rect.right - parseFloat(style.right);
-        return { left: right - parseFloat(style.width), right };
+        let anchor = span;
+        while (anchor && anchor !== body && getComputedStyle(anchor).position === "static") {
+          anchor = anchor.parentElement;
+        }
+        const base = (anchor ?? body).getBoundingClientRect();
+        const left = base.left + parseFloat(style.left);
+        return { left, right: left + parseFloat(style.width) };
       };
       // Меряем все строки-ориентиры, а не отобранные образцы: выборка по типам
       // блоков однажды уже пропустила случай — строку с горизонтальной линией,

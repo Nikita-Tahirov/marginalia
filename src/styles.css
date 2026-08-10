@@ -1080,7 +1080,6 @@ body[data-resizing] {
 }
 
 .source-line {
-  position: relative;
   border-radius: 1px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -1088,15 +1087,26 @@ body[data-resizing] {
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
-/* Номер висит слева от своей строки, а строка внутри цитаты или списка
-   отступает от края колонки. Без поправки на этот отступ номер ложился бы на
-   полосу цитаты и на маркер списка; --line-indent приходит из configureSourceLines. */
+/* Номер стоит в колонке слева от текста — и держится за саму колонку, а не за
+   свою строку. Это и есть решение старой беды: строка внутри цитаты, списка или
+   кода отступает от края, и номер, привязанный к её краю, уезжал на полосу
+   цитаты и на маркеры. Раньше отступ измеряли для каждой строки; на статье в
+   двадцать тысяч строк это стоило либо секунд, либо неверных номеров у тех
+   групп, чью раскладку браузер решил пропустить.
+
+   Теперь позиционный предок — группа, а не строка: по горизонтали номер стоит
+   у края колонки, а по вертикали остаётся на месте своей строки, потому что
+   top не задан и работает статическая позиция. Мерить больше нечего. */
+.document-chunk {
+  position: relative;
+}
+
 .source-line.line-origin::before {
   content: attr(data-source-line);
   position: absolute;
-  right: calc(100% + 14px + var(--line-indent, 0px));
-  top: 0.22em;
+  left: -46px;
   width: 32px;
+  margin-top: 0.22em;
   color: var(--color-neutral-500);
   font-family: var(--font-body);
   font-size: 10px;

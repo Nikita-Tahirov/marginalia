@@ -344,54 +344,6 @@ function renderToc() {
   });
 }
 
-let indentObserver = null;
-
-// Номера строк должны стоять одной колонкой, иначе в цитате номер попадает на
-// её вертикальную полосу, а в списке — на маркер. Отступ строки от края колонки
-// задают внутренние поля контейнеров в пикселях: от ширины окна он не зависит,
-// поэтому достаточно измерить его один раз.
-function measureIndents(block, contentLeft) {
-  const origins = [...block.querySelectorAll(".source-line.line-origin")];
-  if (block.matches(".source-line.line-origin")) origins.unshift(block);
-  if (!origins.length) return true;
-
-  // Сначала все замеры, потом все записи. Если их чередовать, каждая запись
-  // обесценивает раскладку, а следующий замер заставляет браузер собрать её
-  // заново: на статье в 20 тысяч строк это 26 секунд неподвижного экрана
-  // вместо 15 миллисекунд. Отступы при этом получаются те же самые.
-  const rects = origins.map((span) => span.getClientRects()[0]);
-  origins.forEach((span, index) => {
-    const rect = rects[index];
-    if (rect) span.style.setProperty("--line-indent", `${rect.left - contentLeft}px`);
-  });
-  return rects.every(Boolean);
-}
-
-// Измерять сразу весь документ незачем: человек видит два десятка строк, а
-// платит за все двадцать тысяч. Блок получает свою поправку, когда подходит к
-// экрану, — с запасом, чтобы к моменту появления номер уже стоял на месте.
-function configureSourceLines() {
-  indentObserver?.disconnect();
-  const style = window.getComputedStyle(elements.documentBody);
-  const contentLeft =
-    elements.documentBody.getBoundingClientRect().left + parseFloat(style.paddingLeft);
-
-  indentObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        // Блок, чью раскладку браузер ещё не собрал, размеров не отдаёт.
-        // Оставляем его под наблюдением, вместо того чтобы записать нулевой
-        // отступ и увести номер на полосу цитаты.
-        if (measureIndents(entry.target, contentLeft)) indentObserver.unobserve(entry.target);
-      }
-    },
-    { root: elements.documentPane, rootMargin: "600px 0px" },
-  );
-
-  for (const block of elements.documentBody.children) indentObserver.observe(block);
-}
-
 // Уступка главному потоку между порциями. scheduler.yield возвращает работу
 // быстрее обычной отложенной задачи, но его нет в Safari, поэтому запасной путь
 // обязателен, а не желателен.
@@ -512,7 +464,6 @@ function renderDocument() {
   fillDocument(doc.text, generation).then((finished) => {
     if (!finished) return;
     elements.documentBody.dataset.rendered = "complete";
-    configureSourceLines();
     renderToc();
     applyAnnotationMarkers();
   });
