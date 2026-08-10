@@ -961,7 +961,9 @@ body[data-resizing] {
   width: min(780px, calc(100% - 44px));
   min-height: 100%;
   margin: 0 auto;
-  padding: var(--space-6) var(--space-3) 120px 28px;
+  /* Левое поле держит колонку номеров строк: номер отступает от текста на
+     14px и сам занимает 32px, поэтому меньшего поля ему не хватит. */
+  padding: var(--space-6) var(--space-3) 120px 52px;
   color: var(--color-text);
   overflow-wrap: anywhere;
 }
@@ -1010,7 +1012,10 @@ body[data-resizing] {
 }
 
 .document-body pre {
-  overflow-x: auto;
+  /* Прокрутка обрезала бы номера строк: они стоят в общей колонке, левее
+     блока кода. Замечание привязано к строке, поэтому видимый номер важнее
+     точного вида длинной строки — она переносится. */
+  overflow: visible;
   padding: var(--space-3);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
@@ -1051,10 +1056,13 @@ body[data-resizing] {
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
+/* Номер висит слева от своей строки, а строка внутри цитаты или списка
+   отступает от края колонки. Без поправки на этот отступ номер ложился бы на
+   полосу цитаты и на маркер списка; --line-indent приходит из configureSourceLines. */
 .source-line.line-origin::before {
   content: attr(data-source-line);
   position: absolute;
-  right: calc(100% + 14px);
+  right: calc(100% + 14px + var(--line-indent, 0px));
   top: 0.22em;
   width: 32px;
   color: var(--color-neutral-500);
@@ -1070,6 +1078,11 @@ body[data-resizing] {
 .source-line.line-origin:hover::before,
 .source-line.line-origin:focus-visible::before {
   color: var(--color-accent-700);
+}
+
+.document-body pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .document-body pre .source-line {

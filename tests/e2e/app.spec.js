@@ -480,3 +480,88 @@ test("resizes panes by pointer and keyboard and remembers the widths", async ({ 
     .poll(async () => tocHandle.getAttribute("aria-valuenow"))
     .toBe(String((await paneWidths()).toc));
 });
+
+const nested = `# Заголовок
+
+Обычный абзац для отсчёта.
+
+> Первая строка цитаты.
+> Вторая строка цитаты.
+
+- Пункт списка первый
+- Пункт списка второй
+
+> Внешняя цитата.
+>
+> > Вложенная цитата.
+
+\`\`\`js
+const a = 1;
+\`\`\`
+
+Последний абзац.
+`;
+
+test("keeps every line number in one gutter column, clear of quote bars and markers", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page, "nested.md", nested);
+
+  const gutter = () =>
+    page.evaluate(() => {
+      const body = document.querySelector("#document-body");
+      const box = (span) => {
+        const style = getComputedStyle(span, "::before");
+        const rect = span.getClientRects()[0];
+        const right = rect.right - parseFloat(style.right);
+        return { left: right - parseFloat(style.width), right };
+      };
+      const picked = {
+        paragraph: [...body.querySelectorAll("p > .source-line.line-origin")]
+          .find((span) => !span.closest("blockquote") && !span.closest("li")),
+        quote: body.querySelector("blockquote .source-line.line-origin"),
+        nestedQuote: body.querySelector("blockquote blockquote .source-line.line-origin"),
+        listItem: body.querySelector("li .source-line.line-origin"),
+        code: body.querySelector("pre .source-line.line-origin"),
+      };
+      const lefts = Object.values(picked).map((span) => box(span).left);
+
+      // Пересечение номера с вертикальной полосой цитаты — тот самый дефект.
+      let overlaps = 0;
+      for (const quote of body.querySelectorAll("blockquote")) {
+        const rect = quote.getBoundingClientRect();
+        const barRight = rect.left + parseFloat(getComputedStyle(quote).borderLeftWidth);
+        for (const span of quote.querySelectorAll(".source-line.line-origin")) {
+          const { left, right } = box(span);
+          if (left < barRight && right > rect.left) overlaps += 1;
+        }
+      }
+
+      // Номер, уехавший за край прокручиваемого предка, был бы обрезан и невидим.
+      let clipped = 0;
+      for (const span of body.querySelectorAll(".source-line.line-origin")) {
+        const { left, right } = box(span);
+        for (let node = span.parentElement; node && node !== document.body; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+          const rect = node.getBoundingClientRect();
+          if (left < rect.left - 0.5 || right > rect.right + 0.5) clipped += 1;
+        }
+      }
+
+      return {
+        spread: Math.max(...lefts) - Math.min(...lefts),
+        overlaps,
+        clipped,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+
+  for (const width of [1440, 1180, 1040, 860]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => (await gutter()).spread).toBeLessThanOrEqual(1);
+    const measured = await gutter();
+    expect(measured.overlaps, `ширина ${width}`).toBe(0);
+    expect(measured.clipped, `ширина ${width}`).toBe(0);
+    expect(measured.overflow, `ширина ${width}`).toBe(false);
+  }
+});

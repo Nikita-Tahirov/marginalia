@@ -324,11 +324,20 @@ function renderToc() {
 
 function configureSourceLines() {
   const origins = [...elements.documentBody.querySelectorAll(".source-line.line-origin")];
+  // Номера строк должны стоять одной колонкой, иначе в цитате номер попадает на
+  // её вертикальную полосу, а в списке — на маркер. Отступ строки от края
+  // колонки задают внутренние поля контейнеров в пикселях: от ширины окна он не
+  // зависит, поэтому считаем его один раз при отрисовке, без пересчёта на resize.
+  const style = window.getComputedStyle(elements.documentBody);
+  const contentLeft =
+    elements.documentBody.getBoundingClientRect().left + parseFloat(style.paddingLeft);
   for (const span of origins) {
     const line = Number(span.dataset.sourceLine);
     span.tabIndex = 0;
     span.setAttribute("role", "button");
     span.setAttribute("aria-label", `Строка ${line}. Нажмите Enter, чтобы процитировать всю строку.`);
+    const rect = span.getClientRects()[0];
+    if (rect) span.style.setProperty("--line-indent", `${rect.left - contentLeft}px`);
   }
 }
 

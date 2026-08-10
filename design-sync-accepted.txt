@@ -72,3 +72,17 @@ extra: .storage-notice
 extra: .storage-notice[hidden]
 extra: .storage-notice p
 extra: .storage-notice .btn
+
+# Номера строк собраны в одну колонку слева от всего текста. В макете номер
+# висел на левом краю своей строки и потому ложился на полосу цитаты и на
+# маркер списка; поправку на отступ строки приносит --line-indent, а левое поле
+# документа расширено под саму колонку.
+differs: .source-line.line-origin::before -> right
+differs: .document-body -> padding
+
+# Прокрутка блока кода обрезала бы номер строки, ушедший левее этого блока.
+# Замечание привязано к строке, поэтому видимый номер важнее точного вида
+# длинной строки — она переносится.
+differs: .document-body pre -> overflow
+differs: .document-body pre -> overflow-x
+extra: .document-body pre code
