@@ -9,11 +9,16 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+// Роль, доступное имя и место в обходе клавиатурой пишутся сразу в разметку.
+// Расставлять их обходом готового дерева значило бы тронуть по три атрибута у
+// каждой из десяти тысяч строк уже после того, как документ показан человеку, —
+// и до конца этого обхода экран стоит.
 function lineSpan(line, env) {
   env.__seenLines ??= new Set();
   const isOrigin = !env.__seenLines.has(line);
   env.__seenLines.add(line);
-  return `<span class="source-line${isOrigin ? " line-origin" : ""}" data-source-line="${line}">`;
+  if (!isOrigin) return `<span class="source-line" data-source-line="${line}">`;
+  return `<span class="source-line line-origin" data-source-line="${line}" tabindex="0" role="button" aria-label="Строка ${line}. Нажмите Enter, чтобы процитировать всю строку.">`;
 }
 
 function safeHref(value) {
@@ -136,7 +141,16 @@ export function renderMarkdown(text) {
       "tr",
       "ul",
     ],
-    ALLOWED_ATTR: ["class", "data-source-line", "href", "rel", "target"],
+    ALLOWED_ATTR: [
+      "aria-label",
+      "class",
+      "data-source-line",
+      "href",
+      "rel",
+      "role",
+      "tabindex",
+      "target",
+    ],
   });
 
   for (const link of fragment.querySelectorAll("a")) {
