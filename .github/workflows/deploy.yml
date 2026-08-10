@@ -4,17 +4,26 @@ on:
   push:
     branches: [main]
 
+# Прогону нужен только исходный код: право писать в репозиторий у него отобрано
+# явно, а не оставлено на усмотрение настроек. У задания есть ключ сервисного
+# аккаунта Firebase, и чем меньше оно может сверх выкладки, тем дешевле ошибка.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # Действия закреплены по хешу коммита, а не по тегу: тег переставляют, и
+      # вместе с ним меняется код, которому мы отдаём ключ. Комментарий рядом —
+      # чтобы человек видел версию, не разворачивая хеш.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 11.8.0
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -26,7 +35,7 @@ jobs:
       - run: pnpm run test:setup
       - run: pnpm test
 
-      - uses: FirebaseExtended/action-hosting-deploy@v0.11.0
+      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MY_NIKITA_TOOLS }}
