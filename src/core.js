@@ -225,6 +225,72 @@ function parseBlock(block, index) {
   };
 }
 
+// Файл рецензии приходит со стороны: его прислали письмом, скачали, передали
+// вместе со статьёй. Машинный блок в нём — обычный JSON, и лежать там может что
+// угодно: разметка вместо номера строки, чужой тип замечания, объект вместо
+// текста. Поэтому запись не принимается как есть, а пересобирается по известной
+// форме — всё, что в неё не укладывается, заменяется безопасным значением.
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function plainText(value) {
+  return typeof value === "string" ? value : "";
+}
+
+function boundaryKeyOf(value) {
+  if (value === "start" || value === "end") return value;
+  if (Array.isArray(value)) return value.map((item) => finiteNumber(item, 0));
+  return "end";
+}
+
+export function normalizeEntry(entry, index = 0) {
+  if (!entry || typeof entry !== "object") return null;
+  const sequence = finiteNumber(entry.sequence, index + 1);
+
+  if (entry.kind === "free") {
+    const comment = plainText(entry.comment);
+    // Общее замечание состоит из одного текста: пустое оно ничего не значит.
+    if (!comment.trim()) return null;
+    return {
+      kind: "free",
+      status: "committed",
+      comment,
+      boundaryKey: boundaryKeyOf(entry.boundaryKey),
+      freeOrder: finiteNumber(entry.freeOrder, index + 1),
+      sequence,
+    };
+  }
+
+  // Всё, что не объявлено общим замечанием, считается привязанным: неизвестный
+  // вид не должен получить собственную ветку отрисовки.
+  const startLine = finiteNumber(entry.startLine, 1);
+  return {
+    kind: "anchored",
+    status: "committed",
+    type: REVIEW_TYPES.includes(entry.type) ? entry.type : REVIEW_TYPES[0],
+    quote: plainText(entry.quote),
+    comment: plainText(entry.comment),
+    replacement: plainText(entry.replacement),
+    startLine,
+    startColumn: finiteNumber(entry.startColumn, 0),
+    endLine: finiteNumber(entry.endLine, startLine),
+    endColumn: finiteNumber(entry.endColumn, 0),
+    sequence,
+  };
+}
+
+export function normalizeEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry, index) => normalizeEntry(entry, index)).filter(Boolean);
+}
+
+function normalizeMarkDocument(value) {
+  if (!value || typeof value !== "object") return null;
+  return { name: plainText(value.name), sha256: plainText(value.sha256) };
+}
+
 // Возвращает записи и, если рецензия выгружена этим приложением, документ, к
 // которому она была написана. Машинный блок точен; разбор текста — запасной
 // путь для файла, который человек правил руками.
@@ -234,9 +300,9 @@ export function parseReview(text) {
   if (mark) {
     try {
       const payload = JSON.parse(mark[2]);
-      const entries = Array.isArray(payload.entries) ? payload.entries : [];
+      const entries = normalizeEntries(payload?.entries);
       if (entries.length) {
-        return { document: payload.document ?? null, entries, origin: "mark" };
+        return { document: normalizeMarkDocument(payload?.document), entries, origin: "mark" };
       }
     } catch {
       // Блок повреждён правкой руками — разбираем сам текст ниже.
@@ -244,12 +310,16 @@ export function parseReview(text) {
   }
 
   const body = mark ? source.slice(0, mark.index) : source;
-  const entries = body
-    .split(/\n(?=### )/)
-    .map((block) => block.replace(/^### /, "").trim())
-    .filter(Boolean)
-    .map(parseBlock)
-    .filter(Boolean);
+  // Разобранный текст проходит ту же форму, что и машинный блок: два входа в
+  // приложение не должны отличаться тем, насколько им верят.
+  const entries = normalizeEntries(
+    body
+      .split(/\n(?=### )/)
+      .map((block) => block.replace(/^### /, "").trim())
+      .filter(Boolean)
+      .map(parseBlock)
+      .filter(Boolean),
+  );
 
   return { document: null, entries, origin: entries.length ? "text" : "empty" };
 }

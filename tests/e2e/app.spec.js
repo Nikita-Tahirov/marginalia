@@ -865,3 +865,100 @@ test("quotes a selection that runs across a group boundary", async ({ page }) =>
   await expect(page.locator(".review-card blockquote")).toContainText(`Абзац номер`);
   await expect(page.locator(".review-card .line-link")).toHaveText(`строки ${pair.from}–${pair.to}`);
 });
+
+// Рецензию присылают: письмом, вместе со статьёй, из чужой папки. Машинный блок
+// в её конце — обычный JSON, и приложение когда-то верило ему на слово: поле с
+// номером строки уходило в разметку карточки как есть, а разметка исполнялась.
+// Проверка держит оба рубежа сразу — форму записи и экранирование вывода.
+function reviewFileWith(entry) {
+  const payload = {
+    document: { name: "Заголовок", sha256: null },
+    // Запись заполнена целиком: иначе неисправленный код спотыкается о пустое
+    // поле, проверка краснеет по чужой причине и ничего не доказывает.
+    entries: [
+      {
+        kind: "anchored",
+        status: "committed",
+        quote: "Первая строка с целью.",
+        comment: "обычное замечание",
+        replacement: "",
+        startColumn: 0,
+        endColumn: 20,
+        sequence: 1,
+        ...entry,
+      },
+    ],
+  };
+  return [
+    "### Строка 3 · Правка",
+    "",
+    "> Первая строка с целью.",
+    "",
+    "обычное замечание",
+    "",
+    `<!-- marginalia:1 ${JSON.stringify(payload)} -->`,
+    "",
+  ].join("\n");
+}
+
+test("refuses to run code hidden in an imported review", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const attacks = [
+    { field: "startLine", entry: { type: "Правка", startLine: '3<img src=x onerror="window.__owned=true">', endLine: 3 } },
+    { field: "endLine", entry: { type: "Правка", startLine: 3, endLine: '4<img src=x onerror="window.__owned=true">' } },
+    { field: "type", entry: { type: '<img src=x onerror="window.__owned=true">', startLine: 3, endLine: 3 } },
+    { field: "id", entry: { type: "Правка", startLine: 3, endLine: 3, id: '" onmouseover="window.__owned=true' } },
+  ];
+
+  for (const attack of attacks) {
+    await page.locator("#review-input").setInputFiles({
+      name: `${attack.field}.md`,
+      mimeType: "text/markdown",
+      buffer: Buffer.from(reviewFileWith(attack.entry)),
+    });
+    await expect(page.locator(".review-card")).toHaveCount(1);
+    // Ни исполнения, ни узла, который его нёс: карточка осталась текстом.
+    expect(await page.evaluate(() => window.__owned ?? null), attack.field).toBeNull();
+    await expect(page.locator("#review-list img, #review-list script")).toHaveCount(0);
+    await expect(page.locator(".review-card .type-badge")).toHaveText("Правка");
+  }
+
+  // Заражение переживало перезагрузку: запись ложилась в хранилище и исполнялась
+  // при каждом открытии. Форма проверяется и на чтении, поэтому не переживает.
+  await page.reload();
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  expect(await page.evaluate(() => window.__owned ?? null)).toBeNull();
+  await expect(page.locator("#review-list img, #review-list script")).toHaveCount(0);
+});
+
+test("still opens a review exported by an earlier version", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3, "Вопрос");
+  await commitDraft(page, "Замечание для выгрузки.", "");
+  await expect(page.locator(".review-card")).toHaveCount(1);
+
+  const exported = await page.evaluate(() => {
+    const dialog = document.querySelector("#preview-content");
+    document.querySelector("#preview-review").click();
+    const text = dialog.textContent;
+    document.querySelector("#close-preview").click();
+    return text;
+  });
+  expect(exported).toContain("<!-- marginalia:1");
+
+  // Тот же файл узнаётся по SHA-256 и возвращает прежнюю рецензию, поэтому для
+  // чистого листа нужен другой текст — но с той же строкой, к которой привязка.
+  await loadMarkdown(page, "clean.md", article.replace("# Заголовок", "# Другой заголовок"));
+  await expect(page.locator(".review-card")).toHaveCount(0);
+  await page.locator("#review-input").setInputFiles({
+    name: "review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(exported),
+  });
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Замечание для выгрузки.");
+  await expect(page.locator(".review-card .line-link")).toHaveText("строка 3");
+});

@@ -5,6 +5,7 @@ import {
   countByType,
   lineHeading,
   nextFreeOrder,
+  normalizeEntry,
   orderReviewEntries,
   parseReview,
   pluralizeReview,
@@ -217,39 +218,45 @@ function visibleOrderedEntries() {
 }
 
 function typeClass(type) {
-  return `type-${type.toLowerCase()}`;
+  return `type-${String(type).toLowerCase()}`;
 }
 
+// Карточка собирается строкой ради скорости на длинной рецензии, поэтому ¬одно
+// поле не попадает в разметку без экранирования — включая те, что по замыслу
+// содержат число или значение из известного набора. Форму записи проверяет
+// normalizeEntry; это второй рубеж на случай, если она когда-нибудь пропустит.
 function anchoredCard(entry) {
   const replacement = entry.replacement?.trim()
     ? `<div class="replacement"><span>Заменить на</span><p>${renderMultiline(entry.replacement.trim())}</p></div>`
     : "";
   const active = entry.id === state.activeEntryId ? " is-active" : "";
-  return `<article class="review-card ${typeClass(entry.type)}${active}" data-entry-id="${entry.id}" tabindex="0">
+  const id = escapeHtml(entry.id);
+  return `<article class="review-card ${escapeHtml(typeClass(entry.type))}${active}" data-entry-id="${id}" tabindex="0">
     <header class="card-header">
-      <span class="type-badge">${entry.type}</span>
-      <button class="line-link" type="button" data-action="activate" data-entry-id="${entry.id}">${lineHeading(entry).toLowerCase()}</button>
-      <button class="card-delete" type="button" data-action="delete" data-entry-id="${entry.id}" aria-label="Удалить замечание">×</button>
+      <span class="type-badge">${escapeHtml(entry.type)}</span>
+      <button class="line-link" type="button" data-action="activate" data-entry-id="${id}">${escapeHtml(lineHeading(entry).toLowerCase())}</button>
+      <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить замечание">×</button>
     </header>
     <blockquote>${renderMultiline(entry.quote)}</blockquote>
     ${entry.comment.trim() ? `<p class="card-comment">${renderMultiline(entry.comment)}</p>` : ""}
     ${replacement}
     <footer class="card-actions">
-      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${entry.id}">+ Общее после</button>
+      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
     </footer>
   </article>`;
 }
 
 function freeCard(entry) {
-  return `<article class="review-card free-card" data-entry-id="${entry.id}" tabindex="0">
+  const id = escapeHtml(entry.id);
+  return `<article class="review-card free-card" data-entry-id="${id}" tabindex="0">
     <header class="card-header">
       <span class="general-badge">Общее замечание</span>
       <span class="free-position">без строки</span>
-      <button class="card-delete" type="button" data-action="delete" data-entry-id="${entry.id}" aria-label="Удалить общее замечание">×</button>
+      <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить общее замечание">×</button>
     </header>
     <p class="card-comment">${renderMultiline(entry.comment)}</p>
     <footer class="card-actions">
-      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${entry.id}">+ Общее после</button>
+      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
     </footer>
   </article>`;
 }
@@ -272,10 +279,10 @@ function draftCard(entry) {
   // уже высказывание. Общее замечание, наоборот, состоит из одного текста —
   // пустое оно ничего не значит, поэтому там поле остаётся обязательным.
   const ready = anchored || Boolean(entry.comment.trim());
-  return `<article class="review-card draft-card" data-entry-id="${entry.id}">
+  return `<article class="review-card draft-card" data-entry-id="${escapeHtml(entry.id)}">
     <header class="draft-heading">
       <span>Новое ${anchored ? "замечание" : "общее замечание"}</span>
-      <span>${anchored ? lineHeading(entry).toLowerCase() : "без строки"}</span>
+      <span>${anchored ? escapeHtml(lineHeading(entry).toLowerCase()) : "без строки"}</span>
     </header>
     ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(entry.type)}</div>` : ""}
     <label class="draft-label" for="draft-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
@@ -559,11 +566,27 @@ function storedShape(doc) {
   };
 }
 
+// Опознаватель записи попадает в разметку карточки, поэтому из хранилища
+// принимается только то, что приложение само и выдавало.
+const ENTRY_ID = /^[0-9a-f-]{36}$/;
+
+// Хранилище — не доверенный источник: в него уже могла лечь запись из чужого
+// файла, разобранного прежней версией приложения. Записи пересобираются по той
+// же форме при каждом чтении, иначе исправление обошло бы как раз тех, у кого
+// такая запись сохранена.
 function restoreDocument(stored, review) {
+  const entries = (review?.entries ?? [])
+    .map((entry, index) => {
+      const normalized = normalizeEntry(entry, index);
+      if (!normalized) return null;
+      const id = typeof entry?.id === "string" && ENTRY_ID.test(entry.id) ? entry.id : crypto.randomUUID();
+      return { ...normalized, id };
+    })
+    .filter(Boolean);
   return {
     ...stored,
     lineData: splitPhysicalLines(stored.text),
-    entries: review?.entries ?? [],
+    entries,
     sequence: review?.sequence ?? 0,
   };
 }

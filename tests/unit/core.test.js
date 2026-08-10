@@ -202,3 +202,76 @@ test("a comment containing a comment terminator survives the machine block", asy
   const marked = serializeReview([hostile], { name: "a.md", sha256: "0" });
   assert.equal(parseReview(marked).entries[0].comment, hostile.comment);
 });
+
+test("a review file cannot smuggle markup through fields meant to hold numbers", () => {
+  const payload = {
+    document: { name: "Статья", sha256: "abc" },
+    entries: [
+      {
+        kind: "anchored",
+        status: "committed",
+        type: "Правка",
+        quote: "Строка.",
+        comment: "замечание",
+        replacement: "",
+        startLine: '3<img src=x onerror="alert(1)">',
+        endLine: { toString: () => "4" },
+        startColumn: 0,
+        endColumn: 7,
+        sequence: 1,
+      },
+    ],
+  };
+  const parsed = parseReview(`### Строка 3 · Правка\n\n> Строка.\n\nзамечание\n\n<!-- marginalia:1 ${JSON.stringify(payload)} -->\n`);
+
+  assert.equal(parsed.origin, "mark");
+  const [entry] = parsed.entries;
+  // Номер строки, который нельзя прочитать как число, заменяется безопасным —
+  // а не едет дальше строкой, которую потом соберут в разметку.
+  assert.equal(typeof entry.startLine, "number");
+  assert.equal(entry.startLine, 1);
+  assert.equal(typeof entry.endLine, "number");
+});
+
+test("a review file cannot invent a note type or a note kind of its own", () => {
+  const payload = {
+    entries: [
+      { kind: "anchored", type: '<img src=x>', quote: "q", comment: "c", startLine: 2, endLine: 2, sequence: 1 },
+      { kind: "странный", type: "Правка", quote: "q", comment: "c", startLine: 3, endLine: 3, sequence: 2 },
+      { kind: "free", comment: "общее", boundaryKey: "конец", freeOrder: "первый", sequence: 3 },
+      { kind: "free", comment: "   ", sequence: 4 },
+      "не запись",
+      null,
+    ],
+  };
+  const { entries } = parseReview(`### Строка 2 · Правка\n\n> q\n\nc\n\n<!-- marginalia:1 ${JSON.stringify(payload)} -->\n`);
+
+  // Пустое общее замечание и не-объекты отбрасываются; остальные приводятся.
+  assert.equal(entries.length, 3);
+  assert.equal(entries[0].type, "Правка");
+  assert.equal(entries[1].kind, "anchored");
+  assert.equal(entries[2].boundaryKey, "end");
+  assert.equal(entries[2].freeOrder, 3);
+});
+
+test("text and comment fields keep only text, never objects", () => {
+  const payload = {
+    entries: [
+      {
+        kind: "anchored",
+        type: "Вопрос",
+        quote: { length: 1 },
+        comment: ["массив"],
+        replacement: 42,
+        startLine: 5,
+        endLine: 5,
+        sequence: 1,
+      },
+    ],
+  };
+  const { entries } = parseReview(`<!-- marginalia:1 ${JSON.stringify(payload)} -->\n`);
+  assert.equal(entries[0].quote, "");
+  assert.equal(entries[0].comment, "");
+  assert.equal(entries[0].replacement, "");
+  assert.equal(entries[0].type, "Вопрос");
+});
