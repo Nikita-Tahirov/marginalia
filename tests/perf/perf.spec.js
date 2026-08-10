@@ -36,15 +36,34 @@ const TARGET_SLOWDOWN = 6;
 // иначе на более медленной машине сборки к её собственной медлительности
 // добавилось бы полное шестикратное замедление, и проверка падала бы не из-за
 // приложения, а из-за железа.
-const CALIBRATION_BASELINE_MS = 15;
+const CALIBRATION_BASELINE_MS = 14;
 
+// Калибровка меряет ту работу, которой занято приложение, а не чистый счёт.
+// Счётная петля обманула: на машине сборки она шла в полтора раза медленнее и
+// множитель снизился, а открытие статьи всё равно заняло вдвое больше времени —
+// потому что там узкое место не арифметика, а разбор разметки и раскладка.
 function calibrationLoop() {
   const started = performance.now();
   let accumulator = 0;
-  for (let index = 0; index < 5_000_000; index += 1) {
+  for (let index = 0; index < 1_000_000; index += 1) {
     accumulator = (accumulator + index * 31) % 1_000_003;
   }
-  return { ms: performance.now() - started, accumulator };
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;left:-9999px;top:0;width:600px";
+  document.body.append(host);
+  let html = "";
+  for (let index = 0; index < 2000; index += 1) {
+    html += `<p><span class="calibration-line">Строка ${index} с текстом обычной длины.</span></p>`;
+  }
+  host.innerHTML = html;
+  void host.offsetHeight;
+  const rows = host.querySelectorAll("span");
+  let width = 0;
+  for (const row of rows) width += row.getBoundingClientRect().width;
+  host.remove();
+
+  return { ms: performance.now() - started, accumulator, width };
 }
 
 async function calibrate(page) {
