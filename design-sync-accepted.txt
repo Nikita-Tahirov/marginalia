@@ -100,3 +100,8 @@ extra: .text-dialog .input
 extra: .text-dialog textarea.input
 extra: .dialog-hint
 extra: .dialog-actions
+
+# Строка с горизонтальной линией — единственная, где строчная обёртка держит
+# внутри блочный элемент, из-за чего её ширина растягивается и номер уезжает
+# из колонки. В макете номера в колонку не собирались, поэтому правила нет.
+extra: .document-body .thematic-line .source-line

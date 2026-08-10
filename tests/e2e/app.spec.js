@@ -499,6 +499,8 @@ const nested = `# Заголовок
 const a = 1;
 \`\`\`
 
+---
+
 Последний абзац.
 `;
 
@@ -515,15 +517,11 @@ test("keeps every line number in one gutter column, clear of quote bars and mark
         const right = rect.right - parseFloat(style.right);
         return { left: right - parseFloat(style.width), right };
       };
-      const picked = {
-        paragraph: [...body.querySelectorAll("p > .source-line.line-origin")]
-          .find((span) => !span.closest("blockquote") && !span.closest("li")),
-        quote: body.querySelector("blockquote .source-line.line-origin"),
-        nestedQuote: body.querySelector("blockquote blockquote .source-line.line-origin"),
-        listItem: body.querySelector("li .source-line.line-origin"),
-        code: body.querySelector("pre .source-line.line-origin"),
-      };
-      const lefts = Object.values(picked).map((span) => box(span).left);
+      // Меряем все строки-ориентиры, а не отобранные образцы: выборка по типам
+      // блоков однажды уже пропустила случай — строку с горизонтальной линией,
+      // где номер уезжал за пределы колонки.
+      const origins = [...body.querySelectorAll(".source-line.line-origin")];
+      const lefts = origins.map((span) => box(span).left);
 
       // Пересечение номера с вертикальной полосой цитаты — тот самый дефект.
       let overlaps = 0;

@@ -1079,6 +1079,13 @@ body[data-resizing] {
   overflow-wrap: anywhere;
 }
 
+/* Строка с горизонтальной линией — единственная, где строчная обёртка держит
+   внутри блочный элемент: из-за этого её собственная ширина растягивается, и
+   номер, привязанный к правому краю обёртки, уезжал далеко влево от колонки. */
+.document-body .thematic-line .source-line {
+  display: block;
+}
+
 .document-body pre .source-line {
   display: block;
   min-height: 1.55em;
