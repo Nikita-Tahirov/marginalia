@@ -407,10 +407,38 @@ function yieldToMainThread() {
 // такая порция растягивается в несколько раз, поэтому запас взят с избытком.
 const CHUNK_BUDGET_MS = 12;
 
+// Верхняя граница на размер группы. Одного лишь запаса по времени мало: на
+// быстрой машине в порцию попадает весь документ, группа выходит огромной, и
+// смысл пропуска раскладки теряется — вместе с предсказуемостью проверок.
+const CHUNK_BLOCK_LIMIT = 40;
+
 // Номер отрисовки: человек может переключить статью, пока предыдущая ещё
 // собирается, и незаконченная сборка не должна досыпать свои блоки в чужой
 // документ.
 let renderGeneration = 0;
+
+// Указатель строк: по номеру физической строки — её куски в документе и их
+// текст. Собирается заодно со сборкой, по готовому фрагменту до вставки, когда
+// раскладка ещё не нужна. Без него каждое замечание и каждая буква в поиске
+// стоили бы обхода всех четырнадцати тысяч кусков.
+let lineIndex = new Map();
+
+function indexFragment(fragment) {
+  for (const span of fragment.querySelectorAll(".source-line")) {
+    const line = Number(span.dataset.sourceLine);
+    const known = lineIndex.get(line);
+    if (known) {
+      known.spans.push(span);
+      known.text += span.textContent;
+    } else {
+      lineIndex.set(line, { spans: [span], text: span.textContent });
+    }
+  }
+}
+
+function indexedLine(line) {
+  return lineIndex.get(line) ?? null;
+}
 
 async function fillDocument(text, generation) {
   const plan = planMarkdown(text);
@@ -419,12 +447,22 @@ async function fillDocument(text, generation) {
   while (index < plan.ranges.length) {
     const started = performance.now();
     const batch = document.createDocumentFragment();
-    while (index < plan.ranges.length && performance.now() - started < CHUNK_BUDGET_MS) {
+    let blocks = 0;
+    while (
+      index < plan.ranges.length &&
+      blocks < CHUNK_BLOCK_LIMIT &&
+      performance.now() - started < CHUNK_BUDGET_MS
+    ) {
       batch.append(renderTokenRange(plan, plan.ranges[index]));
       index += 1;
+      blocks += 1;
     }
     if (generation !== renderGeneration) return false;
-    elements.documentBody.append(batch);
+    indexFragment(batch);
+    const group = document.createElement("div");
+    group.className = "document-chunk";
+    group.append(batch);
+    elements.documentBody.append(group);
     if (index < plan.ranges.length) await yieldToMainThread();
     if (generation !== renderGeneration) return false;
   }
@@ -437,6 +475,10 @@ function renderDocument() {
   const generation = (renderGeneration += 1);
   hideQuoteToolbar();
   elements.documentBody.replaceChildren();
+  lineIndex = new Map();
+  markedLines = new Map();
+  activeLines = new Set();
+  highlightedLines = new Set();
   state.searchResults = [];
   state.searchIndex = -1;
   elements.searchInput.value = "";
@@ -476,40 +518,59 @@ function renderDocument() {
   });
 }
 
+// Какие строки сейчас размечены и какая из них выделена. Помним это, чтобы
+// снимать пометки ровно там, где они стояли: обходить весь документ ради
+// одного добавленного замечания незачем.
+let markedLines = new Map();
+let activeLines = new Set();
+
 function applyAnnotationMarkers() {
   const doc = activeDocument();
-  const spans = [...elements.documentBody.querySelectorAll("[data-source-line]")];
-  for (const span of spans) {
-    span.classList.remove("is-annotated", "is-active-annotation");
-    span.removeAttribute("data-annotation-count");
-  }
-  if (!doc) return;
 
   const counts = new Map();
-  for (const entry of doc.entries.filter((item) => item.kind === "anchored")) {
-    for (let line = entry.startLine; line <= entry.endLine; line += 1) {
-      counts.set(line, (counts.get(line) ?? 0) + 1);
+  if (doc) {
+    for (const entry of doc.entries) {
+      if (entry.kind !== "anchored") continue;
+      for (let line = entry.startLine; line <= entry.endLine; line += 1) {
+        counts.set(line, (counts.get(line) ?? 0) + 1);
+      }
     }
   }
 
-  for (const span of spans) {
-    const line = Number(span.dataset.sourceLine);
-    const count = counts.get(line) ?? 0;
-    if (count) {
+  for (const [line] of markedLines) {
+    if (counts.has(line)) continue;
+    for (const span of indexedLine(line)?.spans ?? []) {
+      span.classList.remove("is-annotated");
+      span.removeAttribute("data-annotation-count");
+    }
+  }
+
+  for (const [line, count] of counts) {
+    if (markedLines.get(line) === count) continue;
+    for (const span of indexedLine(line)?.spans ?? []) {
       span.classList.add("is-annotated");
       span.dataset.annotationCount = String(count);
     }
   }
 
-  const active = doc.entries.find((entry) => entry.id === state.activeEntryId);
+  markedLines = counts;
+
+  const active = doc?.entries.find((entry) => entry.id === state.activeEntryId);
+  const nextActive = new Set();
   if (active?.kind === "anchored") {
-    for (const span of spans) {
-      const line = Number(span.dataset.sourceLine);
-      if (line >= active.startLine && line <= active.endLine) {
-        span.classList.add("is-active-annotation");
-      }
-    }
+    for (let line = active.startLine; line <= active.endLine; line += 1) nextActive.add(line);
   }
+
+  for (const line of activeLines) {
+    if (nextActive.has(line)) continue;
+    for (const span of indexedLine(line)?.spans ?? []) span.classList.remove("is-active-annotation");
+  }
+  for (const line of nextActive) {
+    if (activeLines.has(line)) continue;
+    for (const span of indexedLine(line)?.spans ?? []) span.classList.add("is-active-annotation");
+  }
+
+  activeLines = nextActive;
 }
 
 function refreshReviewState(options) {
@@ -835,8 +896,7 @@ function offsetInside(span, container, offset) {
 }
 
 function cumulativeLineOffset(span, localOffset) {
-  const line = span.dataset.sourceLine;
-  const peers = [...elements.documentBody.querySelectorAll(`.source-line[data-source-line="${line}"]`)];
+  const peers = lineGroup(Number(span.dataset.sourceLine));
   const index = peers.indexOf(span);
   const preceding = peers.slice(0, Math.max(index, 0)).reduce((sum, item) => sum + item.textContent.length, 0);
   return preceding + localOffset;
@@ -867,7 +927,7 @@ function selectionInfo(range, quote) {
 }
 
 function lineGroup(line) {
-  return [...elements.documentBody.querySelectorAll(`.source-line[data-source-line="${line}"]`)];
+  return indexedLine(line)?.spans ?? [];
 }
 
 function wholeLineSelection(span) {
@@ -1016,20 +1076,16 @@ function activateEntry(id) {
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function lineGroups() {
-  const groups = new Map();
-  for (const span of elements.documentBody.querySelectorAll(".source-line")) {
-    const line = Number(span.dataset.sourceLine);
-    if (!groups.has(line)) groups.set(line, []);
-    groups.get(line).push(span);
-  }
-  return groups;
-}
+// Подсвеченные строки прошлого запроса: гасим только их, а не весь документ.
+let highlightedLines = new Set();
 
 function clearSearchClasses() {
-  for (const span of elements.documentBody.querySelectorAll(".source-line")) {
-    span.classList.remove("is-search-hit", "is-current-search-hit");
+  for (const line of highlightedLines) {
+    for (const span of lineGroup(line)) {
+      span.classList.remove("is-search-hit", "is-current-search-hit");
+    }
   }
+  highlightedLines = new Set();
 }
 
 function runSearch(query) {
@@ -1042,18 +1098,20 @@ function runSearch(query) {
     return;
   }
 
-  for (const [line, spans] of lineGroups()) {
-    const text = spans.map((span) => span.textContent).join("");
-    const haystack = text.toLocaleLowerCase("ru");
-    let offset = 0;
-    while ((offset = haystack.indexOf(needle, offset)) >= 0) {
+  for (const [line, entry] of lineIndex) {
+    const haystack = entry.text.toLocaleLowerCase("ru");
+    let offset = haystack.indexOf(needle);
+    if (offset < 0) continue;
+    while (offset >= 0) {
       state.searchResults.push({ line, offset });
-      offset += Math.max(needle.length, 1);
+      offset = haystack.indexOf(needle, offset + Math.max(needle.length, 1));
     }
-    if (state.searchResults.some((result) => result.line === line)) {
-      spans.forEach((span) => span.classList.add("is-search-hit"));
-    }
+    highlightedLines.add(line);
+    for (const span of entry.spans) span.classList.add("is-search-hit");
   }
+
+  // Указатель наполняется по мере сборки, поэтому порядок совпадений в нём —
+  // порядок строк в документе; сортировать нечего.
   if (state.searchResults.length) state.searchIndex = 0;
   showCurrentSearchResult(false);
 }
@@ -1066,10 +1124,13 @@ function updateSearchCounter() {
   elements.searchNext.disabled = total === 0;
 }
 
+let currentHitLine = null;
+
 function showCurrentSearchResult(scroll = true) {
-  for (const span of elements.documentBody.querySelectorAll(".is-current-search-hit")) {
-    span.classList.remove("is-current-search-hit");
+  if (currentHitLine !== null) {
+    for (const span of lineGroup(currentHitLine)) span.classList.remove("is-current-search-hit");
   }
+  currentHitLine = state.searchResults[state.searchIndex]?.line ?? null;
   const result = state.searchResults[state.searchIndex];
   if (result) {
     const spans = lineGroup(result.line);

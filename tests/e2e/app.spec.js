@@ -809,3 +809,52 @@ test("builds the document in pieces without changing a single node", async ({ pa
   expect(comparison.pieces).toBeGreaterThan(100);
   expect(comparison.lines).toBeGreaterThan(1000);
 });
+
+// Документ выкладывается группами, и граница между ними не должна быть заметна
+// человеку: выделение, начатое в одной группе и законченное в другой, обязано
+// давать такую же цитату, как внутри одной.
+test("quotes a selection that runs across a group boundary", async ({ page }) => {
+  await page.goto("/");
+  const text = [
+    "# Проверка границ",
+    "",
+    ...Array.from({ length: 400 }, (_, index) => `Абзац номер ${index + 1} со своим содержанием.\n`),
+  ].join("\n");
+  await loadMarkdown(page, "boundary.md", text);
+  await expect(page.locator("#document-body")).toHaveAttribute("data-rendered", "complete");
+
+  const groups = await page.locator(".document-chunk").count();
+  expect(groups).toBeGreaterThan(1);
+
+  // Берём последнюю строку одной группы и первую строку следующей.
+  const pair = await page.evaluate(() => {
+    const chunks = [...document.querySelectorAll(".document-chunk")];
+    for (let index = 0; index < chunks.length - 1; index += 1) {
+      const before = [...chunks[index].querySelectorAll(".source-line.line-origin")].at(-1);
+      const after = chunks[index + 1].querySelector(".source-line.line-origin");
+      if (before && after) {
+        return { from: Number(before.dataset.sourceLine), to: Number(after.dataset.sourceLine) };
+      }
+    }
+    return null;
+  });
+  expect(pair).not.toBeNull();
+
+  await page.evaluate(({ from, to }) => {
+    const start = document.querySelector(`.source-line[data-source-line="${from}"]`);
+    const end = document.querySelector(`.source-line[data-source-line="${to}"]`);
+    const range = document.createRange();
+    range.setStart(start.firstChild, 0);
+    range.setEnd(end.firstChild, end.firstChild.textContent.length);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.querySelector("#document-body").dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  }, pair);
+
+  await expect(page.locator("#quote-toolbar")).toBeVisible();
+  await page.locator('#quote-toolbar [data-quote-type="Вопрос"]').click();
+  await commitDraft(page, "Через границу.");
+  await expect(page.locator(".review-card blockquote")).toContainText(`Абзац номер`);
+  await expect(page.locator(".review-card .line-link")).toHaveText(`строки ${pair.from}–${pair.to}`);
+});
