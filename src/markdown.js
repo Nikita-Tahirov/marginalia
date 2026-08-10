@@ -106,9 +106,45 @@ markdown.renderer.rules.hr = (tokens, index, _options, env) => {
   return `<div class="thematic-line">${lineSpan(line, env)}<hr></span></div>`;
 };
 
+// Границы блоков верхнего уровня: место, где вложенность вернулась к нулю.
+// По ним документ можно собирать частями, не разрезая ни абзац, ни таблицу.
+function topLevelRanges(tokens) {
+  const ranges = [];
+  let depth = 0;
+  let start = 0;
+  tokens.forEach((token, index) => {
+    depth += token.nesting;
+    if (depth === 0) {
+      ranges.push([start, index + 1]);
+      start = index + 1;
+    }
+  });
+  if (start < tokens.length) ranges.push([start, tokens.length]);
+  return ranges;
+}
+
+// Разбор всего текста разом остаётся: резать сам markdown по кускам нельзя —
+// ссылочные определения и сноски живут во всём документе сразу, и текст,
+// разобранный по частям, вышел бы другим. Делится только то, что можно делить
+// без последствий: превращение уже разобранных блоков в узлы страницы.
+export function planMarkdown(text) {
+  const env = { __seenLines: new Set(), __currentInlineLine: 1 };
+  const tokens = markdown.parse(text, env);
+  return { tokens, env, ranges: topLevelRanges(tokens) };
+}
+
+export function renderTokenRange(plan, [from, to]) {
+  return sanitizeToFragment(
+    markdown.renderer.render(plan.tokens.slice(from, to), markdown.options, plan.env),
+  );
+}
+
 export function renderMarkdown(text) {
   const env = { __seenLines: new Set(), __currentInlineLine: 1 };
-  const html = markdown.render(text, env);
+  return sanitizeToFragment(markdown.render(text, env));
+}
+
+function sanitizeToFragment(html) {
   const fragment = DOMPurify.sanitize(html, {
     RETURN_DOM_FRAGMENT: true,
     SANITIZE_NAMED_PROPS: true,

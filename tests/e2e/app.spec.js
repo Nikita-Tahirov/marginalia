@@ -771,3 +771,41 @@ test("refuses an empty name and an empty paste in a way the reader can see", asy
   await expect(page.locator("#rename-dialog")).not.toBeVisible();
   await expect(page.locator("#document-select")).toContainText("Новое имя");
 });
+
+// Документ собирается частями, и вопрос не в скорости, а в том, получается ли
+// ровно та же страница. Проверяем не образцы, а всю разметку целиком: сборка
+// по блокам и сборка одним куском должны совпасть символ в символ.
+test("builds the document in pieces without changing a single node", async ({ page }) => {
+  await page.goto("/");
+  const comparison = await page.evaluate(async () => {
+    const markdown = await import("/src/markdown.js");
+    const { buildArticle } = await import("/tests/perf/article.js");
+    const text = buildArticle(3000);
+
+    const whole = document.createElement("div");
+    whole.append(markdown.renderMarkdown(text));
+
+    const inPieces = document.createElement("div");
+    const plan = markdown.planMarkdown(text);
+    for (const range of plan.ranges) inPieces.append(markdown.renderTokenRange(plan, range));
+
+    return {
+      identical: whole.innerHTML === inPieces.innerHTML,
+      pieces: plan.ranges.length,
+      lines: inPieces.querySelectorAll(".source-line.line-origin").length,
+      firstDifference: (() => {
+        const left = whole.innerHTML;
+        const right = inPieces.innerHTML;
+        for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+          if (left[index] !== right[index]) return left.slice(Math.max(0, index - 60), index + 60);
+        }
+        return null;
+      })(),
+    };
+  });
+
+  expect(comparison.firstDifference).toBeNull();
+  expect(comparison.identical).toBe(true);
+  expect(comparison.pieces).toBeGreaterThan(100);
+  expect(comparison.lines).toBeGreaterThan(1000);
+});

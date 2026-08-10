@@ -12,7 +12,7 @@ import {
   sha256Hex,
   splitPhysicalLines,
 } from "./core.js";
-import { renderMarkdown } from "./markdown.js";
+import { planMarkdown, renderTokenRange } from "./markdown.js";
 import {
   deleteDocument as forgetDocument,
   findByHash,
@@ -392,8 +392,49 @@ function configureSourceLines() {
   for (const block of elements.documentBody.children) indentObserver.observe(block);
 }
 
+// Уступка главному потоку между порциями. scheduler.yield возвращает работу
+// быстрее обычной отложенной задачи, но его нет в Safari, поэтому запасной путь
+// обязателен, а не желателен.
+function yieldToMainThread() {
+  if (typeof scheduler !== "undefined" && typeof scheduler?.yield === "function") {
+    return scheduler.yield();
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// Сколько миллисекунд подряд позволено занимать главный поток. Задача длиннее
+// пятидесяти миллисекунд уже считается длинной, а на слабом планшете каждая
+// такая порция растягивается в несколько раз, поэтому запас взят с избытком.
+const CHUNK_BUDGET_MS = 12;
+
+// Номер отрисовки: человек может переключить статью, пока предыдущая ещё
+// собирается, и незаконченная сборка не должна досыпать свои блоки в чужой
+// документ.
+let renderGeneration = 0;
+
+async function fillDocument(text, generation) {
+  const plan = planMarkdown(text);
+  let index = 0;
+
+  while (index < plan.ranges.length) {
+    const started = performance.now();
+    const batch = document.createDocumentFragment();
+    while (index < plan.ranges.length && performance.now() - started < CHUNK_BUDGET_MS) {
+      batch.append(renderTokenRange(plan, plan.ranges[index]));
+      index += 1;
+    }
+    if (generation !== renderGeneration) return false;
+    elements.documentBody.append(batch);
+    if (index < plan.ranges.length) await yieldToMainThread();
+    if (generation !== renderGeneration) return false;
+  }
+
+  return true;
+}
+
 function renderDocument() {
   const doc = activeDocument();
+  const generation = (renderGeneration += 1);
   hideQuoteToolbar();
   elements.documentBody.replaceChildren();
   state.searchResults = [];
@@ -404,6 +445,7 @@ function renderDocument() {
   if (!doc) {
     elements.documentBody.hidden = true;
     elements.documentEmpty.hidden = false;
+    elements.documentBody.dataset.rendered = "complete";
     elements.tocList.innerHTML = `<span class="toc-empty">Откройте документ</span>`;
     elements.documentMeta.textContent = "";
     return;
@@ -411,18 +453,27 @@ function renderDocument() {
 
   elements.documentEmpty.hidden = true;
   elements.documentBody.hidden = false;
+  elements.documentMeta.textContent = `${doc.lineData.lines.length} строк`;
+
   if (doc.text.length === 0) {
     const empty = document.createElement("div");
     empty.className = "rendered-empty";
     empty.textContent = "Документ пуст.";
     elements.documentBody.append(empty);
-  } else {
-    elements.documentBody.append(renderMarkdown(doc.text));
-    configureSourceLines();
+    elements.documentBody.dataset.rendered = "complete";
+    renderToc();
+    applyAnnotationMarkers();
+    return;
   }
-  elements.documentMeta.textContent = `${doc.lineData.lines.length} строк`;
-  renderToc();
-  applyAnnotationMarkers();
+
+  elements.documentBody.dataset.rendered = "partial";
+  fillDocument(doc.text, generation).then((finished) => {
+    if (!finished) return;
+    elements.documentBody.dataset.rendered = "complete";
+    configureSourceLines();
+    renderToc();
+    applyAnnotationMarkers();
+  });
 }
 
 function applyAnnotationMarkers() {

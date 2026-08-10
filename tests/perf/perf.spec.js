@@ -73,7 +73,12 @@ async function openArticle(page, lines, name) {
     mimeType: "text/markdown",
     buffer: Buffer.from(buildArticle(lines)),
   });
+  // Ждём не счётчика строк, а завершения сборки документа: она идёт порциями,
+  // и замер, снятый на половине пути, показал бы половину работы.
   await expect(page.locator("#document-meta")).toHaveText(`${lines} строк`, { timeout: 600_000 });
+  await expect(page.locator("#document-body")).toHaveAttribute("data-rendered", "complete", {
+    timeout: 600_000,
+  });
 }
 
 // Режим отчёта нужен, чтобы снять полную картину «до» правки: иначе первое же
@@ -82,7 +87,8 @@ async function openArticle(page, lines, name) {
 const REPORT_ONLY = process.env.PERF_REPORT_ONLY === "1";
 
 function report(title, measurement) {
-  const line = `${title}: самая длинная задача ${measurement.longest} мс, всего длинных задач ${measurement.tasks.length}, порог ${LONG_TASK_LIMIT_MS} мс`;
+  const listed = measurement.tasks.length ? ` (${measurement.tasks.join(", ")})` : "";
+  const line = `${title}: самая длинная задача ${measurement.longest} мс, всего длинных задач ${measurement.tasks.length}${listed}, порог ${LONG_TASK_LIMIT_MS} мс`;
   test.info().annotations.push({ type: "измерение", description: line });
   console.log(line);
 }
