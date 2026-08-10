@@ -895,6 +895,16 @@ body[data-resizing] {
   margin-left: auto;
 }
 
+/* Кнопка закрытия идёт сразу за предложением установки, без второго отступа. */
+.storage-notice .notice-close {
+  margin-left: 0;
+  width: 26px;
+  height: 26px;
+  color: var(--color-neutral-600);
+  font-size: 16px;
+  line-height: 1;
+}
+
 .draft-actions {
   display: flex;
   align-items: center;

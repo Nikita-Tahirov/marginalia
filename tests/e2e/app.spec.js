@@ -365,6 +365,40 @@ test("explains where the review lives only once there is something to lose", asy
   await expect(page.locator("#storage-notice-text")).toContainText("хранятся в этом браузере");
 });
 
+test("stops warning about storage once the app is installed", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание до установки.");
+  await expect(page.locator("#storage-notice")).toBeVisible();
+
+  // Событие приходит в ту вкладку, из которой приложение поставили.
+  await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+  await expect(page.locator("#storage-notice")).toBeHidden();
+
+  // Установленное приложение открывают и обычной вкладкой, где display-mode
+  // снова «browser»: предупреждение не должно возвращаться и там.
+  await page.reload();
+  await expect(page.locator(".review-card")).toContainText("Замечание до установки.");
+  await expect(page.locator("#storage-notice")).toBeHidden();
+});
+
+test("lets the reader dismiss the storage warning for good", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Замечание без установки.");
+  await expect(page.locator("#storage-notice")).toBeVisible();
+
+  await page.locator("#dismiss-storage-notice").click();
+  await expect(page.locator("#storage-notice")).toBeHidden();
+
+  // Закрытое однажды не возвращается: человек предупреждён и решил иначе.
+  await page.reload();
+  await expect(page.locator(".review-card")).toContainText("Замечание без установки.");
+  await expect(page.locator("#storage-notice")).toBeHidden();
+});
+
 test("announces an update once it has already been applied", async ({ page }) => {
   await page.goto("/");
   // Так выглядит возвращение человека, у которого приложение обновилось между

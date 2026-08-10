@@ -26,11 +26,13 @@ import {
 import { noticeAfterUpdate } from "./updates.js";
 import {
   canPromptInstall,
+  dismissStorageNotice,
   isAppleMobile,
   isInstalled,
   persistDeclined,
   promptInstall,
   rememberPersistDecline,
+  storageNoticeDismissed,
   watchInstallOffer,
 } from "./install.js";
 import "./panes.js";
@@ -47,6 +49,7 @@ const elements = {
   storageNotice: document.querySelector("#storage-notice"),
   storageNoticeText: document.querySelector("#storage-notice-text"),
   installApp: document.querySelector("#install-app"),
+  dismissStorageNotice: document.querySelector("#dismiss-storage-notice"),
   importNotice: document.querySelector("#import-notice"),
   saveState: document.querySelector("#save-state"),
   searchInput: document.querySelector("#search-input"),
@@ -509,7 +512,7 @@ async function persistReview(doc) {
 function showStorageNotice() {
   const hasReview = state.documents.some((doc) => doc.entries.length);
   const secure = state.persistent || isInstalled();
-  elements.storageNotice.hidden = !hasReview || secure;
+  elements.storageNotice.hidden = !hasReview || secure || storageNoticeDismissed();
   if (elements.storageNotice.hidden) return;
 
   const canInstall = canPromptInstall();
@@ -1272,6 +1275,11 @@ async function restoreWorkspace() {
   state.persistent = await storageIsPersistent();
   showStorageNotice();
 }
+
+elements.dismissStorageNotice.addEventListener("click", () => {
+  dismissStorageNotice();
+  showStorageNotice();
+});
 
 elements.installApp.addEventListener("click", async () => {
   const accepted = await promptInstall();

@@ -5,6 +5,8 @@
 // а единственный доступный нам способ защитить чужую работу.
 
 const DECLINED_KEY = "marginalia:persist-declined";
+const INSTALLED_KEY = "marginalia:installed";
+const NOTICE_KEY = "marginalia:storage-notice-dismissed";
 
 let deferredPrompt = null;
 
@@ -28,11 +30,45 @@ export function rememberPersistDecline() {
   }
 }
 
+function readFlag(key) {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key) {
+  try {
+    localStorage.setItem(key, "1");
+  } catch {
+    // Хранилище запрещено — признак не переживёт сеанс, но и вреда не будет.
+  }
+}
+
+// Установленное приложение открывается не только своим окном: человек может
+// вернуться и обычной вкладкой, где display-mode снова «browser». Поэтому
+// однажды увиденную установку запоминаем, а не спрашиваем режим каждый раз.
+// Режимов у окна приложения тоже несколько: строка заголовка и наложение
+// системных кнопок дают не standalone, хотя приложение установлено.
+const APP_DISPLAY_MODES = ["standalone", "minimal-ui", "fullscreen", "window-controls-overlay"];
+
 export function isInstalled() {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    window.navigator.standalone === true
-  );
+  const running =
+    APP_DISPLAY_MODES.some((mode) => window.matchMedia(`(display-mode: ${mode})`).matches) ||
+    window.navigator.standalone === true;
+  if (running) writeFlag(INSTALLED_KEY);
+  return running || readFlag(INSTALLED_KEY);
+}
+
+// Полосу о хранилище человек вправе закрыть, не устанавливая приложение:
+// он предупреждён, и повторять это при каждом открытии незачем.
+export function storageNoticeDismissed() {
+  return readFlag(NOTICE_KEY);
+}
+
+export function dismissStorageNotice() {
+  writeFlag(NOTICE_KEY);
 }
 
 // Safari не поддерживает beforeinstallprompt, поэтому там кнопки быть не может —
@@ -49,6 +85,9 @@ export function watchInstallOffer(onChange) {
   });
   window.addEventListener("appinstalled", () => {
     deferredPrompt = null;
+    // Событие приходит и в ту вкладку, из которой приложение поставили: с этой
+    // минуты предупреждать о хрупкости хранилища больше не о чем.
+    writeFlag(INSTALLED_KEY);
     onChange();
   });
 }
