@@ -47,10 +47,15 @@ async function watchLongTasks(page) {
   await page.evaluate(() => {
     window.__longTasks = [];
     window.__longTaskObserver?.disconnect();
+    // Отсечка по времени начала: без неё наблюдатель отдаёт и уже случившиеся
+    // задачи, и замер действия показывает чужую задачу открытия документа.
+    const watchStart = performance.now();
     window.__longTaskObserver = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) window.__longTasks.push(Math.round(entry.duration));
+      for (const entry of list.getEntries()) {
+        if (entry.startTime >= watchStart) window.__longTasks.push(Math.round(entry.duration));
+      }
     });
-    window.__longTaskObserver.observe({ type: "longtask", buffered: true });
+    window.__longTaskObserver.observe({ type: "longtask" });
   });
 }
 
