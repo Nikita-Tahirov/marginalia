@@ -8,6 +8,10 @@ export default defineConfig({
   projects: [
     { name: "e2e", testDir: "./tests/e2e" },
     { name: "perf", testDir: "./tests/perf", fullyParallel: false, workers: 1 },
+    // Заголовки безопасности задаются раздачей, а не приложением, поэтому этот
+    // набор поднимает собственный сервер над собранной сборкой и не пользуется
+    // общим адресом сервера разработки.
+    { name: "headers", testDir: "./tests/headers" },
   ],
   use: {
     baseURL: "http://127.0.0.1:4173",
