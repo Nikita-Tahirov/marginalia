@@ -385,6 +385,12 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await page.locator(".review-card blockquote").click();
   await expect(source).toHaveClass(/is-active-annotation/);
   await expect(source).toBeInViewport();
+
+  // Строка Markdown — целый абзац, и тень с растеканием обводила его инлайновый
+  // бокс: над текстом и под ним появлялась линия во всю ширину колонки. Пометка
+  // остаётся внутри строки, поэтому наружной тени у неё быть не должно.
+  const shadow = await source.evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(shadow.split(/,(?![^(]*\))/).every((layer) => layer.includes("inset"))).toBe(true);
 });
 
 // Панель предлагает действие над выделением: пережив его, она закрывает текст
