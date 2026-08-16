@@ -961,6 +961,37 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await expect(commit).toBeDisabled();
 });
 
+test("binds hanging prepositions on screen without letting them reach the review", async ({
+  page,
+}) => {
+  const text = "# Заголовок\n\nЭто учение А. Ф. Лосева о символе и о смысле.\n";
+  await page.goto("/");
+  await loadMarkdown(page, "typography.md", text);
+
+  // На холсте предлог держится за своё слово, а инициалы — за фамилию.
+  const shown = await page
+    .locator('.source-line[data-source-line="3"]')
+    .first()
+    .textContent();
+  expect(shown).toContain("А.\u00a0Ф.\u00a0Лосева");
+  expect(shown).toContain("о\u00a0символе");
+  expect(shown).toContain("о\u00a0смысле");
+
+  // Поиск ищет по тому, что человек набирает, а не по разметке экрана.
+  await page.locator("#search-input").fill("о символе");
+  await expect(page.locator("#search-counter")).toHaveText("1 / 1");
+  await page.locator("#search-input").fill("");
+
+  // В цитату замечания неразрывный пробел не уходит: файл рецензии остаётся
+  // текстом статьи, а не снимком того, как её показали.
+  await quoteWholeLine(page, 3);
+  await page.locator("#edit-comment").fill("Проверка цитаты.");
+  await page.locator("#edit-comment").press("Escape");
+  const quote = await page.locator(".review-card blockquote").textContent();
+  expect(quote).not.toContain("\u00a0");
+  expect(quote).toContain("А. Ф. Лосева о символе");
+});
+
 test("lets the browser spell-check the note fields in Russian", async ({ page }) => {
   await page.goto("/");
   await loadMarkdown(page);

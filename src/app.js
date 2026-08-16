@@ -13,7 +13,7 @@ import {
   sha256Hex,
   splitPhysicalLines,
 } from "./core.js";
-import { planMarkdown, renderTokenRange } from "./markdown.js";
+import { NBSP, planMarkdown, renderTokenRange } from "./markdown.js";
 import {
   deleteDocument as forgetDocument,
   findByHash,
@@ -480,15 +480,25 @@ let renderGeneration = 0;
 // стоили бы обхода всех четырнадцати тысяч кусков.
 let lineIndex = new Map();
 
+// Неразрывный пробел ставит типографика при показе — его нет ни в статье, ни в
+// том, что человек набирает. Поэтому из экрана он не должен уходить дальше
+// экрана: в цитате он уехал бы в файл рецензии, а в поиске запрос с обычным
+// пробелом перестал бы находить строку, которая на вид ему точно отвечает.
+// Длина от замены не меняется, поэтому колонки цитаты и смещения совпадений
+// остаются верными.
+function asTyped(text) {
+  return text.replaceAll(NBSP, " ");
+}
+
 function indexFragment(fragment) {
   for (const span of fragment.querySelectorAll(".source-line")) {
     const line = Number(span.dataset.sourceLine);
     const known = lineIndex.get(line);
     if (known) {
       known.spans.push(span);
-      known.text += span.textContent;
+      known.text += asTyped(span.textContent);
     } else {
-      lineIndex.set(line, { spans: [span], text: span.textContent });
+      lineIndex.set(line, { spans: [span], text: asTyped(span.textContent) });
     }
   }
 }
@@ -1205,7 +1215,7 @@ function createAnchoredEntry(type) {
     kind: "anchored",
     status: "committed",
     type,
-    quote: selected.quote,
+    quote: asTyped(selected.quote),
     comment: "",
     replacement: "",
     startLine: selected.startLine,
@@ -1423,7 +1433,7 @@ function runSearch(query) {
   clearSearchClasses();
   state.searchResults = [];
   state.searchIndex = -1;
-  const needle = query.trim().toLocaleLowerCase("ru");
+  const needle = asTyped(query).trim().toLocaleLowerCase("ru");
   if (!needle) {
     updateSearchCounter();
     return;
