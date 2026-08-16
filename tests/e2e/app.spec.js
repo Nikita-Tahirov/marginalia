@@ -660,10 +660,19 @@ test("keeps the review toolbar on a single row down to the narrowest pane", asyn
         const rect = node.getBoundingClientRect();
         return Math.round(rect.top + rect.height / 2);
       });
+      // Свободное место в ряду: подогнанный впритык ряд разъезжается на другой
+      // платформе, где те же надписи набраны на пару пикселей шире.
+      const style = getComputedStyle(bar);
+      const inner =
+        bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const used =
+        children.reduce((sum, node) => sum + node.getBoundingClientRect().width, 0) +
+        parseFloat(style.columnGap || 0) * Math.max(0, children.length - 1);
       return {
         rows: new Set(centers).size,
         height: Math.round(bar.getBoundingClientRect().height),
         clipped: bar.scrollWidth > bar.clientWidth + 1,
+        slack: Math.round(inner - used),
         openReviewVisible:
           document.querySelector("#open-review").getBoundingClientRect().width > 0,
       };
@@ -677,6 +686,7 @@ test("keeps the review toolbar on a single row down to the narrowest pane", asyn
     expect(measured.rows, `ширина ${width}`).toBe(1);
     expect(measured.height, `ширина ${width}`).toBeLessThanOrEqual(48);
     expect(measured.clipped, `ширина ${width}`).toBe(false);
+    expect(measured.slack, `ширина ${width}`).toBeGreaterThanOrEqual(12);
     // Действие не исчезает вместе с подписью: сжимается только сама подпись.
     expect(measured.openReviewVisible, `ширина ${width}`).toBe(true);
   }
