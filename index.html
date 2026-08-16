@@ -42,6 +42,10 @@
           <select id="document-select" class="document-select" disabled>
             <option>Документ не открыт</option>
           </select>
+          <!-- Длина документа стоит рядом с его именем: это свойство открытой
+               статьи, а не оглавления, и остаётся на виду, когда оглавление
+               скрыто. Второго места, где называется то же число, нет. -->
+          <span id="document-meta" class="document-meta"></span>
           <button id="open-files" class="btn btn-secondary compact-btn" type="button">
             Открыть .md
           </button>
@@ -119,7 +123,9 @@
         </div>
 
         <div class="header-actions">
-          <span id="review-count" class="review-count">0 замечаний</span>
+          <!-- Отметка остаётся только для несохранённой работы: об удачной
+               записи говорит то же всплывающее сообщение, что и о самом
+               действии, а сообщение о потере данных гаснуть не должно. -->
           <span id="save-state" class="save-state" role="status" aria-live="polite" hidden></span>
           <button
             id="copy-review"
@@ -236,7 +242,6 @@
           </div>
           <article id="document-body" class="document-body" hidden></article>
           <div id="quote-toolbar" class="quote-toolbar" hidden role="toolbar" aria-label="Создать замечание">
-            <span class="quote-label">Цитировать</span>
             <button type="button" data-quote-type="Правка">Правка</button>
             <button type="button" data-quote-type="Вопрос">Вопрос</button>
             <button type="button" data-quote-type="Удалить">Удалить</button>
@@ -263,7 +268,6 @@
           <div id="toc-list" class="toc-list">
             <span class="toc-empty">Откройте документ</span>
           </div>
-          <span id="document-meta" class="document-meta"></span>
         </nav>
       </main>
 

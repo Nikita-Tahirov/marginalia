@@ -249,12 +249,22 @@ textarea:focus-visible,
    пределе на имя оставалось меньше сотни пикселей — прочитать его можно было
    только раскрыв список. Свободное место в шапке для этого есть: поиск и так
    ограничен своим максимумом. */
+/* Потолок ширины поднят ровно на длину подписи с числом строк: она встала
+   рядом с именем и не должна отбирать у него место — имя статьи читают, а
+   длину сверяют изредка. */
 .document-controls {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Место, освободившееся в шапке от счётчика замечаний, отдаём имени статьи, а
+     не оставляем пустым: иначе подпись с числом строк отняла бы ширину у него. */
+  flex: 1 1 auto;
   min-width: 225px;
-  max-width: 520px;
+  max-width: 580px;
+}
+
+.document-controls .document-meta {
+  flex: none;
 }
 
 .document-select {
@@ -306,7 +316,6 @@ textarea:focus-visible,
 }
 
 .search-counter,
-.review-count,
 .document-meta {
   color: var(--color-neutral-600);
   font-size: 11px;
@@ -417,12 +426,6 @@ textarea:focus-visible,
   color: var(--color-accent-800);
   border-left-color: var(--color-accent-500);
   background: color-mix(in srgb, var(--color-accent-200) 35%, transparent);
-}
-
-.toc-bar .document-meta {
-  margin-top: auto;
-  padding-top: var(--space-2);
-  white-space: normal;
 }
 
 .toc-empty {
@@ -1210,25 +1213,15 @@ body[data-resizing] {
   display: none;
 }
 
-.quote-label,
 .quote-toolbar button {
   padding: 8px 9px;
   border: 0;
   border-right: 1px solid #4d4945;
   color: #eae7e7;
   background: transparent;
+  cursor: pointer;
   font-size: 11px;
   white-space: nowrap;
-}
-
-.quote-label {
-  color: #facb8d;
-  font-family: var(--font-heading);
-  font-size: 12px;
-}
-
-.quote-toolbar button {
-  cursor: pointer;
 }
 
 .quote-toolbar button:hover,
@@ -1391,16 +1384,12 @@ body[data-resizing] {
     --toc-width: 200px;
   }
 
-  /* Макет скрывает здесь ещё и .header-actions .btn-ghost: в нём действия
-     рецензии были текстовыми кнопками и требовали ширины подписи. Здесь они
-     иконочные, места почти не занимают и остаются доступными на узком экране,
-     поэтому правило снято намеренно — расхождение с макетом принятое. */
-  .review-count {
-    display: none;
-  }
-
+  /* Макет скрывает здесь .header-actions .btn-ghost: в нём действия рецензии
+     были текстовыми кнопками и требовали ширины подписи. Здесь они иконочные,
+     места почти не занимают и остаются доступными на узком экране, поэтому
+     правило снято намеренно — расхождение с макетом принятое. */
   .document-controls {
-    max-width: 460px;
+    max-width: 515px;
   }
 }
 

@@ -57,7 +57,6 @@ const elements = {
   searchCounter: document.querySelector("#search-counter"),
   searchPrev: document.querySelector("#search-prev"),
   searchNext: document.querySelector("#search-next"),
-  reviewCount: document.querySelector("#review-count"),
   copyReview: document.querySelector("#copy-review"),
   saveReview: document.querySelector("#save-review"),
   themeToggle: document.querySelector("#theme-toggle"),
@@ -168,21 +167,20 @@ function updateHeader() {
     elements.documentSelect.append(new Option("Документ не открыт", ""));
   } else {
     for (const item of state.documents) {
-      const count = item.lineData.lines.length;
       // Номер версии показываем только там, где версий больше одной: для
-      // единственного документа он был бы шумом.
+      // единственного документа он был бы шумом. Длину документа называет
+      // соседний #document-meta — в списке она повторялась бы у каждой строки.
       const version = familySize(item.familyId) > 1 ? ` · вер. ${item.version}` : "";
-      const option = new Option(`${item.name}${version} · ${count} стр.`, item.id);
+      const option = new Option(`${item.name}${version}`, item.id);
       option.selected = item.id === state.activeDocumentId;
       elements.documentSelect.append(option);
     }
     // Длинное имя всё равно упрётся в ширину поля: подсказка показывает его
     // целиком, не заставляя раскрывать список ради одного взгляда.
-    elements.documentSelect.title = doc ? `${doc.name} · ${doc.lineData.lines.length} стр.` : "";
+    elements.documentSelect.title = doc ? doc.name : "";
   }
 
   const count = doc?.entries.length ?? 0;
-  elements.reviewCount.textContent = pluralizeReview(count);
   elements.copyReview.disabled = !doc || count === 0;
   elements.saveReview.disabled = !doc || count === 0;
   elements.previewReview.disabled = !doc || count === 0;
@@ -697,18 +695,24 @@ async function persistDocument(doc) {
   await saveDocument(storedShape(doc));
 }
 
-// Человеку, который привык нажимать «Сохранить», нужно увидеть, что теперь это
-// делается за него. Отметка заодно служит признаком завершённой записи.
+// Об удачной записи говорит то же сообщение, что и о самом действии, поэтому в
+// шапке остаётся только несохранённая работа: два разных угла экрана заставляли
+// человека следить за обоими, а сообщение о возможной потере гаснуть не должно.
 function showSaveState(state) {
-  elements.saveState.hidden = false;
+  const failed = state === "failed";
+  elements.saveState.hidden = !failed;
   elements.saveState.dataset.state = state;
-  elements.saveState.textContent = state === "saved" ? "Сохранено" : "Не сохранено";
+  elements.saveState.textContent = failed ? "Не сохранено" : "";
 }
 
-async function persistReview(doc) {
+// Действие и его запись для человека — одно событие, поэтому и сообщение одно:
+// «Замечание сохранено», а не «добавлено» отдельно от «сохранено».
+async function persistReview(doc, notice = null) {
   if (!doc) return;
   const written = await storeReview(doc.id, doc.entries, doc.sequence);
-  showSaveState(written === null ? "failed" : "saved");
+  const saved = written !== null;
+  showSaveState(saved ? "saved" : "failed");
+  if (notice) showToast(saved ? notice.saved : notice.failed, saved ? "info" : "error");
   // Устойчивость просим в момент, когда появились данные, которые больно
   // потерять: на пустом приложении запрос выглядел бы беспричинным. Браузер
   // отказывает свежему сайту без истории посещений, поэтому попытку повторяем
@@ -1121,8 +1125,11 @@ function commitDraft() {
   state.draft = null;
   state.activeEntryId = committed.kind === "anchored" ? committed.id : null;
   refreshReviewState();
-  persistReview(doc);
-  showToast(committed.kind === "anchored" ? "Замечание добавлено." : "Общее замечание добавлено.");
+  const what = committed.kind === "anchored" ? "Замечание" : "Общее замечание";
+  persistReview(doc, {
+    saved: `${what} сохранено.`,
+    failed: `${what} добавлено, но не сохранено.`,
+  });
 }
 
 function cancelDraft() {
@@ -1138,8 +1145,10 @@ function deleteEntry(id) {
   doc.entries.splice(index, 1);
   if (state.activeEntryId === id) state.activeEntryId = null;
   refreshReviewState();
-  persistReview(doc);
-  showToast("Запись удалена.");
+  persistReview(doc, {
+    saved: "Запись удалена.",
+    failed: "Запись удалена, но список не сохранён.",
+  });
 }
 
 function activateEntry(id) {

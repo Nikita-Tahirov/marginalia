@@ -80,7 +80,7 @@ test("loads documents, searches and keeps per-document reviews", async ({ page }
 
   await loadMarkdown(page, "second.md", "# Второй\n\nТекст.\n");
   await expect(page.locator(".review-card")).toHaveCount(0);
-  await page.locator("#document-select").selectOption({ label: "article.md · 9 стр." });
+  await page.locator("#document-select").selectOption({ label: "article.md" });
   await expect(page.locator(".review-card")).toContainText("Уточнить формулировку.");
 });
 
@@ -96,7 +96,7 @@ test("creates all types and exports identical Markdown to clipboard and download
     await quoteWholeLine(page, index === 0 ? 3 : 4, type);
     await commitDraft(page, `Комментарий ${type}.`, type === "Правка" ? "Замена." : "");
   }
-  await expect(page.locator("#review-count")).toHaveText("4 замечания");
+  await expect(page.locator(".review-card")).toHaveCount(4);
 
   await page.locator('[data-filter-type="Вопрос"]').click();
   await expect(page.locator(".review-card")).toHaveCount(3);
@@ -289,6 +289,10 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   const firstType = page.locator('#quote-toolbar [data-quote-type="Правка"]');
   await expect(page.locator("#quote-toolbar")).toBeVisible();
   await expect(firstType).toBeFocused();
+  // Панель называет только сами действия: подпись над ними человека сбивала —
+  // её принимали за пятую кнопку.
+  await expect(page.locator("#quote-toolbar")).not.toContainText("Цитировать");
+  await expect(page.locator("#quote-toolbar > *")).toHaveCount(4);
   await firstType.click();
   await commitDraft(page, "Замечание из глубины документа.");
   await expect(page.locator(".review-card")).toContainText("строка 37");
@@ -313,7 +317,7 @@ test("marks the quoted fragment, not the whole line it belongs to", async ({ pag
   expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
 
   // Границы цитаты переживают перезагрузку вместе с самой записью.
-  await expect(page.locator("#save-state")).toHaveText("Сохранено");
+  await expect(page.locator("#toast")).toHaveText("Замечание сохранено.");
   await page.reload();
   await expect(page.locator(".review-card")).toContainText("Замечание к части строки.");
   expect(await highlightedFragments(page, "marginalia-note")).toEqual(["строка"]);
@@ -342,7 +346,9 @@ test("keeps the review after the browser is closed and reopened", async ({ page 
   await quoteWholeLine(page, 3, "Вопрос");
   await commitDraft(page, "Замечание, которое обязано пережить перезагрузку.");
   await expect(page.locator(".review-card")).toHaveCount(1);
-  await expect(page.locator("#save-state")).toHaveText("Сохранено");
+  // Одно сообщение об одном событии: и о самом действии, и о его записи.
+  await expect(page.locator("#toast")).toHaveText("Замечание сохранено.");
+  await expect(page.locator("#save-state")).toBeHidden();
 
   await page.reload();
   await expect(page.locator("#document-select")).toContainText("article.md");
@@ -497,7 +503,9 @@ test("keeps working when the browser forbids storage", async ({ page }) => {
   await quoteWholeLine(page, 3);
   await commitDraft(page, "Замечание без хранилища.");
   await expect(page.locator(".review-card")).toContainText("Замечание без хранилища.");
+  // Работа, которая не переживёт вкладку, названа прямо и не гаснет сама.
   await expect(page.locator("#save-state")).toHaveText("Не сохранено");
+  await expect(page.locator("#toast")).toHaveText("Замечание добавлено, но не сохранено.");
 
   await page.locator("#preview-review").click();
   await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Правка");
@@ -520,6 +528,11 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
       // раскрытый список — так и случилось, когда в шапку добавили две кнопки.
       documentNameWidth: document.querySelector("#document-select").getBoundingClientRect().width,
       documentNameTitle: document.querySelector("#document-select").title,
+      // Ищем число строк по всему приложению, а не в заранее известном месте:
+      // проверка обязана краснеть на любом втором его упоминании.
+      lineCounts: [...document.querySelectorAll("#app *")]
+        .filter((node) => !node.children.length && /^\d+\s+(строк|стр)/.test(node.textContent.trim()))
+        .map((node) => node.textContent.trim()),
     }));
 
   // Настольная ширина: документ, рецензия и оглавление рядом.
@@ -531,7 +544,9 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
   // даёт сам контейнер, а не то, что поле упёрлось в min-width и продавило
   // соседние кнопки.
   expect((await layout()).documentNameWidth).toBeGreaterThanOrEqual(240);
-  expect((await layout()).documentNameTitle).toBe("2026.07.02_автореферат.md · 9 стр.");
+  expect((await layout()).documentNameTitle).toBe("2026.07.02_автореферат.md");
+  // Длина документа названа один раз — рядом с именем, а не ещё и в оглавлении.
+  expect((await layout()).lineCounts).toEqual(["9 строк"]);
 
   // Планшет в альбомной ориентации: оглавление уходит, две панели остаются.
   await page.setViewportSize({ width: 1024, height: 768 });
@@ -696,7 +711,6 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
 
   await expect(page.locator(".review-card")).toHaveCount(1);
   await expect(page.locator(".review-card .card-comment")).toHaveCount(0);
-  await expect(page.locator("#review-count")).toHaveText("1 замечание");
 
   await page.locator("#preview-review").click();
   await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Вопрос");
