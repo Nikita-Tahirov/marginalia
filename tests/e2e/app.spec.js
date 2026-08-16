@@ -27,6 +27,35 @@ async function quoteWholeLine(page, line, type = "Правка") {
   await page.locator(`#quote-toolbar [data-quote-type="${type}"]`).click();
 }
 
+// Выделение мышью в собранном документе: ставим тот же диапазон, что даёт
+// протяжка по тексту, и отпускаем кнопку там, где её слушает приложение.
+async function quotePartOfLine(page, line, from, to, type = "Правка") {
+  await page.evaluate(
+    ({ line: target, from: start, to: end }) => {
+      const span = document.querySelector(`.source-line[data-source-line="${target}"]`);
+      const range = document.createRange();
+      range.setStart(span.firstChild, start);
+      range.setEnd(span.firstChild, end);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document
+        .querySelector("#document-body")
+        .dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    },
+    { line, from, to },
+  );
+  await expect(page.locator("#quote-toolbar")).toBeVisible();
+  await page.locator(`#quote-toolbar [data-quote-type="${type}"]`).click();
+}
+
+async function highlightedFragments(page, name) {
+  return page.evaluate(
+    (highlight) => [...(CSS.highlights.get(highlight) ?? [])].map((range) => range.toString()),
+    name,
+  );
+}
+
 async function commitDraft(page, comment, replacement = "") {
   await page.locator("#draft-comment").fill(comment);
   if (replacement) await page.locator("#draft-replacement").fill(replacement);
@@ -268,6 +297,43 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await page.locator(".review-card blockquote").click();
   await expect(source).toHaveClass(/is-active-annotation/);
   await expect(source).toBeInViewport();
+});
+
+test("marks the quoted fragment, not the whole line it belongs to", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quotePartOfLine(page, 3, 7, 13);
+  await commitDraft(page, "Замечание к части строки.");
+
+  // Строка Markdown — это целый абзац, поэтому строчная пометка тут была бы
+  // пометкой абзаца: подсвечена должна быть сама цитата. Только что созданное
+  // замечание открыто, а открытое рисуется своим набором — поверх остальных.
+  await expect(page.locator('[data-source-line="3"].is-annotated')).toHaveCount(0);
+  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
+
+  // Границы цитаты переживают перезагрузку вместе с самой записью.
+  await expect(page.locator("#save-state")).toHaveText("Сохранено");
+  await page.reload();
+  await expect(page.locator(".review-card")).toContainText("Замечание к части строки.");
+  expect(await highlightedFragments(page, "marginalia-note")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual([]);
+
+  await page.locator(".review-card blockquote").click();
+  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
+
+  // Рецензия, разобранная по тексту, границ внутри строки не несёт. Показывать
+  // цитату по выдуманным границам нельзя — такая запись помечает строку целиком.
+  await page.locator('.review-card [data-action="delete"]').click();
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> строка\n\nЗамечание из чужого файла.\n"),
+  });
+  await expect(page.locator(".review-card")).toContainText("Замечание из чужого файла.");
+  await expect(page.locator('[data-source-line="3"].is-annotated')).not.toHaveCount(0);
+  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
 });
 
 test("keeps the review after the browser is closed and reopened", async ({ page }) => {

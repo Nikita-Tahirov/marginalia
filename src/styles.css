@@ -1155,6 +1155,22 @@ body[data-resizing] {
   box-shadow: 0 0 0 3px var(--color-accent-200), inset 0 -1px var(--color-accent-700);
 }
 
+/* Замечание к части строки. Псевдоэлемент подсветки понимает лишь цвет, фон,
+   подчёркивание и тень текста — маркерную полосу строки повторить нечем,
+   поэтому цитата заливается целиком, а нижняя граница строчной пометки
+   становится подчёркиванием. */
+::highlight(marginalia-note) {
+  background-color: color-mix(in srgb, var(--color-accent-300) 55%, transparent);
+  text-decoration: underline 1px var(--color-accent-500);
+  text-underline-offset: 0.2em;
+}
+
+::highlight(marginalia-note-active) {
+  background-color: var(--color-accent-200);
+  text-decoration: underline 1px var(--color-accent-700);
+  text-underline-offset: 0.2em;
+}
+
 .source-line.is-search-hit {
   background-color: color-mix(in srgb, var(--question) 16%, transparent);
 }

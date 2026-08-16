@@ -438,6 +438,9 @@ function renderDocument() {
   markedLines = new Map();
   activeLines = new Set();
   highlightedLines = new Set();
+  // Диапазоны прошлой сборки держат уже выброшенные узлы — снимаем их сразу,
+  // не дожидаясь, пока документ соберётся заново.
+  clearFragmentHighlights();
   state.searchResults = [];
   state.searchIndex = -1;
   elements.searchInput.value = "";
@@ -482,16 +485,114 @@ function renderDocument() {
 let markedLines = new Map();
 let activeLines = new Set();
 
+// Замечание к части строки рисуется по самой цитате, а не по строке целиком.
+// Абзац в Markdown — одна физическая строка, поэтому пометка всей строки в
+// статье без жёстких переносов подсвечивает целый абзац там, где процитировано
+// одно предложение. Границы цитаты запись хранила с самого начала
+// (startColumn/endColumn) — здесь они доходят до разметки.
+//
+// Рисуется через ::highlight: обёртка фрагмента в элемент разрезала бы
+// текстовые узлы документа, а по ним считают и поиск, и указатель строк, и
+// колонки следующего выделения. Где этого API нет, замечание помечает строку
+// целиком — ровно как раньше.
+const FRAGMENT_HIGHLIGHT = "marginalia-note";
+const ACTIVE_FRAGMENT_HIGHLIGHT = "marginalia-note-active";
+const fragmentHighlightsSupported =
+  typeof Highlight === "function" && typeof CSS !== "undefined" && Boolean(CSS.highlights);
+
+function textPoint(span, offset) {
+  const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+  let rest = offset;
+  let last = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (rest <= node.length) return { node, offset: rest };
+    rest -= node.length;
+    last = node;
+  }
+  return last ? { node: last, offset: last.length } : { node: span, offset: 0 };
+}
+
+// Колонка отсчитывается по всей логической строке, а строка может быть разрезана
+// мягким переносом на несколько кусков — идём по ним, пока колонка не попадёт
+// внутрь очередного.
+function linePoint(line, column) {
+  const spans = lineGroup(line);
+  if (!spans.length) return null;
+  let rest = Math.max(0, column);
+  for (const span of spans) {
+    const length = span.textContent.length;
+    if (rest <= length) return textPoint(span, rest);
+    rest -= length;
+  }
+  const last = spans.at(-1);
+  return textPoint(last, last.textContent.length);
+}
+
+function coversWholeLines(entry) {
+  if (entry.startColumn > 0) return false;
+  const end = indexedLine(entry.endLine);
+  return Boolean(end) && entry.endColumn >= end.text.length;
+}
+
+function sameText(left, right) {
+  return left.replace(/\s+/g, " ").trim() === right.replace(/\s+/g, " ").trim();
+}
+
+// Пустой ответ означает «пометить строку целиком»: строки ещё не отрисованы,
+// цитата занимает их полностью, либо колонки не сходятся с сохранённой цитатой.
+// Последнее — обычное дело для рецензии к другой версии статьи и для файла,
+// разобранного по тексту: колонок в нём не было. Подсветить по таким границам
+// значило бы уверенно показать не то место.
+function fragmentRange(entry) {
+  if (coversWholeLines(entry)) return null;
+  const start = linePoint(entry.startLine, entry.startColumn);
+  const end = linePoint(entry.endLine, entry.endColumn);
+  if (!start || !end) return null;
+
+  const range = document.createRange();
+  try {
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+  } catch {
+    return null;
+  }
+  if (range.collapsed) return null;
+  return sameText(range.toString(), entry.quote) ? range : null;
+}
+
+function publishHighlight(name, highlight) {
+  if (!fragmentHighlightsSupported) return;
+  if (highlight.size) CSS.highlights.set(name, highlight);
+  else CSS.highlights.delete(name);
+}
+
+function clearFragmentHighlights() {
+  if (!fragmentHighlightsSupported) return;
+  CSS.highlights.delete(FRAGMENT_HIGHLIGHT);
+  CSS.highlights.delete(ACTIVE_FRAGMENT_HIGHLIGHT);
+}
+
 function applyAnnotationMarkers() {
   const doc = activeDocument();
+  const active = doc?.entries.find((entry) => entry.id === state.activeEntryId);
 
   const counts = new Map();
-  if (doc) {
-    for (const entry of doc.entries) {
-      if (entry.kind !== "anchored") continue;
-      for (let line = entry.startLine; line <= entry.endLine; line += 1) {
-        counts.set(line, (counts.get(line) ?? 0) + 1);
-      }
+  const nextActive = new Set();
+  const fragments = fragmentHighlightsSupported ? new Highlight() : null;
+  const activeFragments = fragmentHighlightsSupported ? new Highlight() : null;
+
+  for (const entry of doc?.entries ?? []) {
+    if (entry.kind !== "anchored") continue;
+
+    const fragment = fragments ? fragmentRange(entry) : null;
+    if (fragment) {
+      (entry === active ? activeFragments : fragments).add(fragment);
+      continue;
+    }
+
+    for (let line = entry.startLine; line <= entry.endLine; line += 1) {
+      counts.set(line, (counts.get(line) ?? 0) + 1);
+      if (entry === active) nextActive.add(line);
     }
   }
 
@@ -513,12 +614,6 @@ function applyAnnotationMarkers() {
 
   markedLines = counts;
 
-  const active = doc?.entries.find((entry) => entry.id === state.activeEntryId);
-  const nextActive = new Set();
-  if (active?.kind === "anchored") {
-    for (let line = active.startLine; line <= active.endLine; line += 1) nextActive.add(line);
-  }
-
   for (const line of activeLines) {
     if (nextActive.has(line)) continue;
     for (const span of indexedLine(line)?.spans ?? []) span.classList.remove("is-active-annotation");
@@ -529,6 +624,13 @@ function applyAnnotationMarkers() {
   }
 
   activeLines = nextActive;
+
+  if (!fragments) return;
+  // Выделенное замечание рисуется поверх остальных: на пересечении двух цитат
+  // должен побеждать тот стиль, который человек сейчас и открыл.
+  activeFragments.priority = 1;
+  publishHighlight(FRAGMENT_HIGHLIGHT, fragments);
+  publishHighlight(ACTIVE_FRAGMENT_HIGHLIGHT, activeFragments);
 }
 
 function refreshReviewState(options) {
