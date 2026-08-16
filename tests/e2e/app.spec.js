@@ -53,11 +53,18 @@ async function quotePartOfLine(page, line, from, to, type = "Правка") {
   await page.locator(`#quote-toolbar [data-quote-type="${type}"]`).click();
 }
 
-async function highlightedFragments(page, name) {
-  return page.evaluate(
-    (highlight) => [...(CSS.highlights.get(highlight) ?? [])].map((range) => range.toString()),
-    name,
-  );
+// Цитаты красятся по типу замечания, поэтому наборов подсветки восемь: четыре
+// типа в двух состояниях. Проверяем состояние целиком — какой именно тип красит
+// цитату, спрашиваем отдельно.
+async function highlightedFragments(page, state) {
+  return page.evaluate((prefix) => {
+    const found = [];
+    for (const [name, highlight] of CSS.highlights) {
+      if (!name.startsWith(prefix)) continue;
+      found.push(...[...highlight].map((range) => range.toString()));
+    }
+    return found;
+  }, `marginalia-${state}-`);
 }
 
 // Читаем не экран, а само хранилище: сообщение о записи живёт четыре секунды и
@@ -430,19 +437,19 @@ test("marks the quoted fragment, not the whole line it belongs to", async ({ pag
   // пометкой абзаца: подсвечена должна быть сама цитата. Только что созданное
   // замечание открыто, а открытое рисуется своим набором — поверх остальных.
   await expect(page.locator('[data-source-line="3"].is-annotated')).toHaveCount(0);
-  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual(["строка"]);
-  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
+  expect(await highlightedFragments(page, "active")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "note")).toEqual([]);
 
   // Границы цитаты переживают перезагрузку вместе с самой записью.
   await expect(page.locator("#toast")).toHaveText("Замечание сохранено.");
   await page.reload();
   await expect(page.locator(".review-card")).toContainText("Замечание к части строки.");
-  expect(await highlightedFragments(page, "marginalia-note")).toEqual(["строка"]);
-  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual([]);
+  expect(await highlightedFragments(page, "note")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "active")).toEqual([]);
 
   await page.locator(".review-card blockquote").click();
-  expect(await highlightedFragments(page, "marginalia-note-active")).toEqual(["строка"]);
-  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
+  expect(await highlightedFragments(page, "active")).toEqual(["строка"]);
+  expect(await highlightedFragments(page, "note")).toEqual([]);
 
   // Рецензия, разобранная по тексту, границ внутри строки не несёт. Показывать
   // цитату по выдуманным границам нельзя — такая запись помечает строку целиком.
@@ -454,7 +461,7 @@ test("marks the quoted fragment, not the whole line it belongs to", async ({ pag
   });
   await expect(page.locator(".review-card")).toContainText("Замечание из чужого файла.");
   await expect(page.locator('[data-source-line="3"].is-annotated')).not.toHaveCount(0);
-  expect(await highlightedFragments(page, "marginalia-note")).toEqual([]);
+  expect(await highlightedFragments(page, "note")).toEqual([]);
 });
 
 test("keeps the review after the browser is closed and reopened", async ({ page }) => {

@@ -135,6 +135,12 @@
   /* Найденное поиском — не тип замечания, и цвет у него свой: раньше он делил
      переменную с «Вопросом» и вслед за ним сменил бы смысл. */
   --search-hit: #6d5b8e;
+  /* Заливка цитаты и карточки — тот же цвет, разбавленный до бумаги: читать
+     статью приходится сквозь него, и полная насыщенность здесь неуместна. */
+  --edit-fill: #ffe3bf;
+  --question-fill: #dce6f2;
+  --danger-fill: #f4e0dd;
+  --rewrite-fill: #dfeddf;
   --focus-ring: var(--color-accent-700);
 }
 
@@ -170,6 +176,10 @@
   --danger: #dc8c82;
   --rewrite: #8fbf94;
   --search-hit: #b9a9d7;
+  --edit-fill: #49371f;
+  --question-fill: #24354d;
+  --danger-fill: #4a2622;
+  --rewrite-fill: #26402c;
   --focus-ring: var(--color-accent-500);
 }
 
@@ -655,34 +665,46 @@ body[data-resizing] {
 }
 
 .review-card {
+  /* Тип задаётся один раз на карточку, а полоса, рамка, фон, метка и блок
+     замены читают его отсюда: иначе пришлось бы повторять четыре набора правил
+     для каждой части карточки. */
+  --card-tint: var(--edit);
+  --card-fill: var(--edit-fill);
   flex: none;
   padding: var(--space-3);
-  border: 1px solid var(--color-divider);
-  border-left: 2px solid var(--edit);
+  border: 1px solid color-mix(in srgb, var(--card-tint) 28%, var(--color-divider));
+  border-left: 2px solid var(--card-tint);
   border-radius: var(--radius-sm);
-  background: var(--color-neutral-100);
+  background: color-mix(in srgb, var(--card-fill) 42%, var(--color-neutral-100));
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .review-card.is-active {
-  border-color: var(--color-accent-600);
+  border-color: var(--card-tint);
   box-shadow: var(--shadow-sm);
 }
 
 .review-card.type-вопрос {
-  border-left-color: var(--question);
+  --card-tint: var(--question);
+  --card-fill: var(--question-fill);
 }
 
 .review-card.type-удалить {
-  border-left-color: var(--danger);
+  --card-tint: var(--danger);
+  --card-fill: var(--danger-fill);
 }
 
 .review-card.type-переписать {
-  border-left-color: var(--rewrite);
+  --card-tint: var(--rewrite);
+  --card-fill: var(--rewrite-fill);
 }
 
-.free-card {
-  border-left-color: var(--color-neutral-500);
+/* Общее замечание не привязано к строке и не имеет типа: ему нечего называть
+   цветом, поэтому оно остаётся нейтральным. */
+.free-card,
+.draft-card {
+  --card-tint: var(--color-neutral-500);
+  --card-fill: transparent;
   background: color-mix(in srgb, var(--color-neutral-100) 80%, var(--color-bg));
 }
 
@@ -703,21 +725,9 @@ body[data-resizing] {
   padding: 2px 6px;
   border: 1px solid currentColor;
   border-radius: 999px;
-  color: var(--edit);
+  color: var(--card-tint);
   font-size: 10px;
   line-height: 1.3;
-}
-
-.type-вопрос .type-badge {
-  color: var(--question);
-}
-
-.type-удалить .type-badge {
-  color: var(--danger);
-}
-
-.type-переписать .type-badge {
-  color: var(--rewrite);
 }
 
 .general-badge {
@@ -815,15 +825,15 @@ body[data-resizing] {
 .replacement {
   margin-top: var(--space-2);
   padding: var(--space-2);
-  border: 1px dashed var(--color-accent-300);
+  border: 1px dashed color-mix(in srgb, var(--card-tint) 45%, transparent);
   border-radius: var(--radius-sm);
-  background: var(--color-accent-100);
+  background: color-mix(in srgb, var(--card-fill) 70%, var(--color-bg));
 }
 
 .replacement > span {
   display: block;
   margin-bottom: 3px;
-  color: var(--color-accent-800);
+  color: color-mix(in srgb, var(--card-tint) 70%, var(--color-text));
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1264,17 +1274,59 @@ body[data-resizing] {
 /* Замечание к части строки. Псевдоэлемент подсветки понимает лишь цвет, фон,
    подчёркивание и тень текста — маркерную полосу строки повторить нечем,
    поэтому цитата заливается целиком, а нижняя граница строчной пометки
-   становится подчёркиванием. */
-::highlight(marginalia-note) {
-  background-color: color-mix(in srgb, var(--color-accent-300) 55%, transparent);
-  text-decoration: underline 1px var(--color-accent-500);
+   становится подчёркиванием. Набор у псевдоэлемента красится целиком, своей
+   переменной у него нет: отсюда пара правил на каждый тип, а не одно с
+   var(--card-tint). Открытая запись берёт тот же цвет плотнее — так видно,
+   какая из соседних цитат сейчас разобрана. */
+::highlight(marginalia-note-edit),
+::highlight(marginalia-note-question),
+::highlight(marginalia-note-delete),
+::highlight(marginalia-note-rewrite),
+::highlight(marginalia-active-edit),
+::highlight(marginalia-active-question),
+::highlight(marginalia-active-delete),
+::highlight(marginalia-active-rewrite) {
   text-underline-offset: 0.2em;
 }
 
-::highlight(marginalia-note-active) {
-  background-color: var(--color-accent-200);
-  text-decoration: underline 1px var(--color-accent-700);
-  text-underline-offset: 0.2em;
+::highlight(marginalia-note-edit) {
+  background-color: var(--edit-fill);
+  text-decoration: underline 1px var(--edit);
+}
+
+::highlight(marginalia-active-edit) {
+  background-color: color-mix(in srgb, var(--edit) 28%, var(--edit-fill));
+  text-decoration: underline 2px var(--edit);
+}
+
+::highlight(marginalia-note-question) {
+  background-color: var(--question-fill);
+  text-decoration: underline 1px var(--question);
+}
+
+::highlight(marginalia-active-question) {
+  background-color: color-mix(in srgb, var(--question) 28%, var(--question-fill));
+  text-decoration: underline 2px var(--question);
+}
+
+::highlight(marginalia-note-delete) {
+  background-color: var(--danger-fill);
+  text-decoration: underline 1px var(--danger);
+}
+
+::highlight(marginalia-active-delete) {
+  background-color: color-mix(in srgb, var(--danger) 28%, var(--danger-fill));
+  text-decoration: underline 2px var(--danger);
+}
+
+::highlight(marginalia-note-rewrite) {
+  background-color: var(--rewrite-fill);
+  text-decoration: underline 1px var(--rewrite);
+}
+
+::highlight(marginalia-active-rewrite) {
+  background-color: color-mix(in srgb, var(--rewrite) 28%, var(--rewrite-fill));
+  text-decoration: underline 2px var(--rewrite);
 }
 
 .source-line.is-search-hit {

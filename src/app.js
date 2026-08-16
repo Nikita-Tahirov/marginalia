@@ -527,8 +527,25 @@ let activeLines = new Set();
 // текстовые узлы документа, а по ним считают и поиск, и указатель строк, и
 // колонки следующего выделения. Где этого API нет, замечание помечает строку
 // целиком — ровно как раньше.
-const FRAGMENT_HIGHLIGHT = "marginalia-note";
-const ACTIVE_FRAGMENT_HIGHLIGHT = "marginalia-note-active";
+// Цвет цитаты называет тип замечания, а псевдоэлемент подсветки красит весь
+// свой набор разом — значит наборов столько, сколько типов, и вдвое больше:
+// открытая запись рисуется поверх остальных.
+const HIGHLIGHT_SLUGS = {
+  Правка: "edit",
+  Вопрос: "question",
+  Удалить: "delete",
+  Переписать: "rewrite",
+};
+
+function highlightName(type, active) {
+  return `marginalia-${active ? "active" : "note"}-${HIGHLIGHT_SLUGS[type] ?? HIGHLIGHT_SLUGS[REVIEW_TYPES[0]]}`;
+}
+
+const HIGHLIGHT_NAMES = REVIEW_TYPES.flatMap((type) => [
+  highlightName(type, false),
+  highlightName(type, true),
+]);
+
 const fragmentHighlightsSupported =
   typeof Highlight === "function" && typeof CSS !== "undefined" && Boolean(CSS.highlights);
 
@@ -600,8 +617,7 @@ function publishHighlight(name, highlight) {
 
 function clearFragmentHighlights() {
   if (!fragmentHighlightsSupported) return;
-  CSS.highlights.delete(FRAGMENT_HIGHLIGHT);
-  CSS.highlights.delete(ACTIVE_FRAGMENT_HIGHLIGHT);
+  for (const name of HIGHLIGHT_NAMES) CSS.highlights.delete(name);
 }
 
 function applyAnnotationMarkers() {
@@ -610,15 +626,16 @@ function applyAnnotationMarkers() {
 
   const counts = new Map();
   const nextActive = new Set();
-  const fragments = fragmentHighlightsSupported ? new Highlight() : null;
-  const activeFragments = fragmentHighlightsSupported ? new Highlight() : null;
+  const fragments = fragmentHighlightsSupported
+    ? new Map(HIGHLIGHT_NAMES.map((name) => [name, new Highlight()]))
+    : null;
 
   for (const entry of doc?.entries ?? []) {
     if (entry.kind !== "anchored") continue;
 
     const fragment = fragments ? fragmentRange(entry) : null;
     if (fragment) {
-      (entry === active ? activeFragments : fragments).add(fragment);
+      fragments.get(highlightName(entry.type, entry === active)).add(fragment);
       continue;
     }
 
@@ -658,11 +675,12 @@ function applyAnnotationMarkers() {
   activeLines = nextActive;
 
   if (!fragments) return;
-  // Выделенное замечание рисуется поверх остальных: на пересечении двух цитат
-  // должен побеждать тот стиль, который человек сейчас и открыл.
-  activeFragments.priority = 1;
-  publishHighlight(FRAGMENT_HIGHLIGHT, fragments);
-  publishHighlight(ACTIVE_FRAGMENT_HIGHLIGHT, activeFragments);
+  for (const [name, highlight] of fragments) {
+    // Выделенное замечание рисуется поверх остальных: на пересечении двух цитат
+    // должен побеждать тот стиль, который человек сейчас и открыл.
+    if (name.startsWith("marginalia-active-")) highlight.priority = 1;
+    publishHighlight(name, highlight);
+  }
 }
 
 function refreshReviewState(options) {
