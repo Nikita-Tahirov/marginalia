@@ -270,18 +270,18 @@ function typeClass(type) {
 // содержат число или значение из известного набора. Форму записи проверяет
 // normalizeEntry; это второй рубеж на случай, если она когда-нибудь пропустит.
 // Текст карточки — не витрина, а поле, в которое ещё вернутся: по нему кликают
-// и правят. Поэтому пустые комментарий и замена не исчезают, а остаются
-// приглашением — иначе к записи, начатой одним типом, нечем было бы вернуться.
+// и правят. Поэтому пустой комментарий не исчезает, а остаётся приглашением —
+// иначе к записи, начатой одним типом, нечем было бы вернуться.
 function anchoredCard(entry) {
   const written = entry.replacement?.trim();
-  // Замену предлагают там, где она и есть смысл замечания: «Правка» и
-  // «Переписать» без неё неполны, а «Вопрос» и «Удалить» ничего не заменяют —
-  // пустое поле у них было бы приглашением написать ненужное.
-  const invited = entry.type === "Правка" || entry.type === "Переписать";
-  const replacement =
-    written || invited
-      ? `<div class="replacement${written ? "" : " is-empty"}" data-action="edit-field" data-field="replacement" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0"><span>Заменить на</span><p>${written ? renderMultiline(written) : "Текст замены"}</p></div>`
-      : "";
+  // Замена — единственное поле карточки, которое можно осмысленно оставить
+  // пустым: замечание бывает и без готовой редакции. Раньше «Правка» и
+  // «Переписать» показывали пустую рамку приглашением, но в узкой колонке она
+  // занимает место, ничего не сообщая. Дописать замену по-прежнему можно
+  // карандашом: редактор открывает поле независимо от того, пусто ли оно.
+  const replacement = written
+    ? `<div class="replacement" data-action="edit-field" data-field="replacement" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0"><span>Заменить на</span><p>${renderMultiline(written)}</p></div>`
+    : "";
   const active = entry.id === state.activeEntryId ? " is-active" : "";
   const id = escapeHtml(entry.id);
   return `<article class="review-card ${escapeHtml(typeClass(entry.type))}${active}" data-entry-id="${id}" tabindex="0">

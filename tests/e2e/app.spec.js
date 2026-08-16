@@ -958,6 +958,34 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await expect(commit).toBeDisabled();
 });
 
+test("keeps the replacement field out of the card until it is written", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  // «Правка» — тот тип, который прежде показывал пустую рамку замены.
+  await quoteWholeLine(page, 3, "Правка");
+  await page.locator("#edit-comment").fill("Формулировка тяжеловата.");
+  await page.locator("#edit-comment").press("Escape");
+
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Формулировка тяжеловата.");
+  await expect(page.locator(".review-card .replacement")).toHaveCount(0);
+
+  // Дописать замену по-прежнему можно: карандаш открывает то же поле.
+  await page.locator(".review-card .card-edit").click();
+  await page.locator("#edit-replacement").fill("Более лёгкая формулировка.");
+  await page.locator("#edit-replacement").press("Escape");
+  await expect(page.locator(".review-card .replacement p")).toHaveText(
+    "Более лёгкая формулировка.",
+  );
+
+  // Опустевшая замена снова уходит из карточки, а не остаётся пустой рамкой:
+  // одни пробелы — это не записанный текст.
+  await page.locator(".review-card .replacement").click();
+  await page.locator("#edit-replacement").fill("   ");
+  await page.locator("#edit-replacement").press("Escape");
+  await expect(page.locator(".review-card .replacement")).toHaveCount(0);
+});
+
 test("opens pasted text from the clipboard, by hand and reports an empty buffer", async ({ page }) => {
   const pasted = "---\ntitle: Статья из буфера\n---\n\n# Заголовок вставки\n\nПервый абзац.\n";
 
