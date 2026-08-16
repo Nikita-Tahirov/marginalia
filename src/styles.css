@@ -570,12 +570,6 @@ body[data-resizing] {
     padding: 6px var(--space-2);
   }
 
-  /* Список поджимается вместе со строкой действий: иначе на узкой панели
-     общая вертикаль, ради которой поля и сведены, снова разъедется. */
-  .review-list {
-    padding: var(--space-3) var(--space-2);
-  }
-
   .review-toolbar .btn-label {
     display: none;
   }
@@ -682,6 +676,16 @@ body[data-resizing] {
   overflow-y: auto;
   padding: var(--space-3);
   scroll-behavior: smooth;
+}
+
+/* Тот же порог, что у строки действий выше: на узкой панели поджимаются оба,
+   иначе вертикаль, ради которой поля и сведены, разъезжается. Правило стоит
+   здесь, а не рядом с остальным контейнерным запросом: там оно оказалось бы
+   выше объявления .review-list и молча проигрывало бы ему по порядку. */
+@container (max-width: 430px) {
+  .review-list {
+    padding: var(--space-3) var(--space-2);
+  }
 }
 
 .empty-review {

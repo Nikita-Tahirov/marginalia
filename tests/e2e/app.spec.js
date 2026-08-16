@@ -1058,6 +1058,20 @@ test("offers a plus between notes instead of a button inside every card", async 
   expect(Math.abs(geometry.toolbarLeft - geometry.cardLeft)).toBeLessThanOrEqual(1);
   expect(geometry.gap).toBeLessThanOrEqual(geometry.sidePadding + 1);
 
+  // Та же вертикаль на узкой панели: там строка действий поджимается своим
+  // контейнерным запросом, и список обязан поджаться вместе с ней.
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--review-width", "360px");
+  });
+  const narrow = await page.evaluate(() => ({
+    toolbarLeft: document.querySelector(".review-toolbar .filter-chip").getBoundingClientRect().left,
+    cardLeft: document.querySelector(".review-card").getBoundingClientRect().left,
+  }));
+  expect(Math.abs(narrow.toolbarLeft - narrow.cardLeft)).toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    document.documentElement.style.removeProperty("--review-width");
+  });
+
   // Плюс между двумя замечаниями ставит новое именно между ними.
   await page.locator(".card-insert .insert-note").first().click();
   await commitDraft(page, "Вставленное посередине.");
