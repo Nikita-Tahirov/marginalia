@@ -29,7 +29,7 @@ async function quoteWholeLine(page, line, type = "Правка") {
 
 // Выделение мышью в собранном документе: ставим тот же диапазон, что даёт
 // протяжка по тексту, и отпускаем кнопку там, где её слушает приложение.
-async function quotePartOfLine(page, line, from, to, type = "Правка") {
+async function selectPartOfLine(page, line, from, to) {
   await page.evaluate(
     ({ line: target, from: start, to: end }) => {
       const span = document.querySelector(`.source-line[data-source-line="${target}"]`);
@@ -46,6 +46,10 @@ async function quotePartOfLine(page, line, from, to, type = "Правка") {
     { line, from, to },
   );
   await expect(page.locator("#quote-toolbar")).toBeVisible();
+}
+
+async function quotePartOfLine(page, line, from, to, type = "Правка") {
+  await selectPartOfLine(page, line, from, to);
   await page.locator(`#quote-toolbar [data-quote-type="${type}"]`).click();
 }
 
@@ -381,6 +385,33 @@ test("keeps the keyboard quote toolbar open on a deep document line", async ({ p
   await page.locator(".review-card blockquote").click();
   await expect(source).toHaveClass(/is-active-annotation/);
   await expect(source).toBeInViewport();
+});
+
+// Панель предлагает действие над выделением: пережив его, она закрывает текст
+// и обещает то, чего уже нет.
+test("hides the quote toolbar whenever the selection is dropped", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const toolbar = page.locator("#quote-toolbar");
+  const source = page.locator('.source-line.line-origin[data-source-line="3"]');
+
+  await source.focus();
+  await source.press("Enter");
+  await expect(toolbar).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(toolbar).toBeHidden();
+  // Панель открыта вслепую, с клавиатуры: фокус обязан вернуться на ту же
+  // строку, иначе человек окажется в начале документа.
+  await expect(source).toBeFocused();
+
+  await selectPartOfLine(page, 3, 0, 6);
+  await page.locator("#search-input").click();
+  await expect(toolbar).toBeHidden();
+
+  await selectPartOfLine(page, 3, 0, 6);
+  await page.evaluate(() => window.getSelection().removeAllRanges());
+  await expect(toolbar).toBeHidden();
 });
 
 test("marks the quoted fragment, not the whole line it belongs to", async ({ page }) => {

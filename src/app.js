@@ -98,6 +98,8 @@ const state = {
   // что человек успел набрать и передумал.
   edit: null,
   pendingSelection: null,
+  // Строка, с которой панель цитаты открыта с клавиатуры: ей возвращаем фокус.
+  quoteOrigin: null,
   activeEntryId: null,
   searchResults: [],
   searchIndex: -1,
@@ -1058,9 +1060,10 @@ function wholeLineSelection(span) {
   };
 }
 
-function showQuoteToolbar(info, focus = false) {
+function showQuoteToolbar(info, focus = false, origin = null) {
   if (!info?.quote?.trim()) return;
   state.pendingSelection = info;
+  state.quoteOrigin = origin;
   const paneRect = elements.documentPane.getBoundingClientRect();
   const left = Math.max(12, info.rect.left - paneRect.left + elements.documentPane.scrollLeft);
   const top = Math.max(12, info.rect.top - paneRect.top + elements.documentPane.scrollTop - 48);
@@ -1070,8 +1073,19 @@ function showQuoteToolbar(info, focus = false) {
   if (focus) elements.quoteToolbar.querySelector("button")?.focus({ preventScroll: true });
 }
 
-function hideQuoteToolbar() {
+// Панель живёт ровно столько, сколько живёт выделение, которое её вызвало:
+// закрывая её, забываем и это выделение, иначе следующее нажатие создало бы
+// замечание к цитате, которую человек уже отменил.
+function hideQuoteToolbar({ restoreFocus = false } = {}) {
+  if (elements.quoteToolbar.hidden) return;
+  const origin = state.quoteOrigin;
+  const held = elements.quoteToolbar.contains(document.activeElement);
   elements.quoteToolbar.hidden = true;
+  state.pendingSelection = null;
+  state.quoteOrigin = null;
+  // Панель, открытую с клавиатуры, человек закрывает вслепую: если не вернуть
+  // фокус на строку, он окажется в начале документа.
+  if (restoreFocus && held && origin?.isConnected) origin.focus({ preventScroll: true });
 }
 
 function handleDocumentScroll() {
@@ -1585,7 +1599,7 @@ elements.documentBody.addEventListener("keydown", (event) => {
   }
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
-    showQuoteToolbar(wholeLineSelection(line), true);
+    showQuoteToolbar(wholeLineSelection(line), true, line);
   }
 });
 
@@ -1593,8 +1607,32 @@ elements.quoteToolbar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-quote-type]");
   if (button) createAnchoredDraft(button.dataset.quoteType);
 });
+// Нажатие на саму панель не должно снимать выделение: браузер схлопнул бы его
+// ещё на mousedown, панель ушла бы вместе с ним и клик не дошёл бы до кнопки.
+elements.quoteToolbar.addEventListener("mousedown", (event) => event.preventDefault());
+
+// Панель предлагает действие над выделением, поэтому исчезает вместе с ним —
+// каким бы способом человек его ни снял: клавишей, щелчком мимо, новым
+// выделением или уходом в другую часть приложения.
+document.addEventListener("selectionchange", () => {
+  if (elements.quoteToolbar.contains(document.activeElement)) return;
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) hideQuoteToolbar();
+});
+document.addEventListener("pointerdown", (event) => {
+  if (elements.quoteToolbar.contains(event.target)) return;
+  hideQuoteToolbar();
+});
+document.addEventListener("focusin", (event) => {
+  if (elements.quoteToolbar.contains(event.target)) return;
+  if (elements.documentBody.contains(event.target)) return;
+  hideQuoteToolbar();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideQuoteToolbar({ restoreFocus: true });
+});
 elements.documentPane.addEventListener("scroll", handleDocumentScroll, { passive: true });
-window.addEventListener("resize", hideQuoteToolbar);
+window.addEventListener("resize", () => hideQuoteToolbar());
 
 elements.searchInput.addEventListener("input", () => runSearch(elements.searchInput.value));
 elements.searchInput.addEventListener("keydown", (event) => {
