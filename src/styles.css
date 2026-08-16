@@ -442,6 +442,17 @@ textarea:focus-visible,
     var(--resizer-width) var(--toc-width);
 }
 
+/* Убранное оглавление отдаёт свою колонку документу целиком — вместе с ручкой,
+   которой больше нечего тянуть. */
+[data-toc-hidden="true"] .workspace {
+  grid-template-columns: var(--review-width) var(--resizer-width) minmax(0, 1fr);
+}
+
+[data-toc-hidden="true"] .toc-bar,
+[data-toc-hidden="true"] .pane-resizer[data-resize="toc"] {
+  display: none;
+}
+
 .pane-resizer {
   position: relative;
   z-index: 5;
@@ -473,10 +484,14 @@ body[data-resizing] {
   user-select: none;
 }
 
+/* Панель — контейнер запросов: строка её действий подстраивается под
+   собственную ширину, а не под ширину окна. Панель тянут мышью независимо от
+   размера экрана, и медиазапрос о такой ширине ничего не знает. */
 .review-pane {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   border-right: 1px solid var(--color-divider);
   background: var(--color-bg);
 }
@@ -486,13 +501,36 @@ body[data-resizing] {
   flex: none;
   display: flex;
   align-items: center;
-  /* Панель тянут мышью до 300px, и на такой ширине действия рецензии уже не
-     помещаются в строку. Пусть переносятся, а не уходят за край: спрятанная
-     кнопка хуже панели в две строки. */
+  /* Перенос остаётся последней страховкой на случай чужого масштаба шрифта, но
+     обычная работа до него не доходит: на узкой панели ряд ужимается сам —
+     см. контейнерный запрос ниже. Две строки съедали место у самой рецензии. */
   flex-wrap: wrap;
   gap: 6px;
   padding: 6px var(--space-3);
   border-bottom: 1px solid var(--color-divider);
+}
+
+/* Ниже этой ширины подпись «Открыть рецензию» уступает место значку, а чипы
+   фильтров поджимаются: строка действий остаётся одной строкой вплоть до
+   минимальной ширины панели в 300px. */
+@container (max-width: 430px) {
+  .review-toolbar .btn-label {
+    display: none;
+  }
+
+  .review-toolbar .filter-chip {
+    padding: 0 4px;
+  }
+}
+
+.compact-btn .glyph {
+  display: none;
+}
+
+@container (max-width: 430px) {
+  .compact-btn .glyph {
+    display: inline-block;
+  }
 }
 
 .filter-list {
@@ -1406,7 +1444,9 @@ body[data-resizing] {
   }
 
   .toc-bar,
-  .pane-resizer[data-resize="toc"] {
+  .pane-resizer[data-resize="toc"],
+  /* Переключать нечего: оглавления здесь нет по самой раскладке. */
+  #toggle-toc {
     display: none;
   }
 

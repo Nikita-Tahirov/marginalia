@@ -4,6 +4,7 @@ const WIDTH_VARIABLES = { review: "--review-width", toc: "--toc-width" };
 const WIDTH_LIMITS = { review: [300, 760], toc: [160, 460] };
 const PANES = Object.keys(WIDTH_VARIABLES);
 const STORAGE_KEY = "marginalia:pane-widths";
+const TOC_KEY = "marginalia:toc-hidden";
 const DOCUMENT_MIN_WIDTH = 320;
 const KEYBOARD_STEP = 12;
 const KEYBOARD_STEP_LARGE = 40;
@@ -157,6 +158,46 @@ for (const handle of handles) {
   });
 }
 
+// Скрытое оглавление — такая же часть выбранной раскладки, как ширина панелей,
+// и переживает перезагрузку по той же причине: человек настроил экран под себя
+// один раз, а не на один сеанс.
+const tocToggle = document.querySelector("#toggle-toc");
+
+function applyTocVisibility(hidden) {
+  root.dataset.tocHidden = hidden ? "true" : "false";
+  if (!tocToggle) return;
+  tocToggle.setAttribute("aria-pressed", hidden ? "false" : "true");
+  tocToggle.setAttribute("aria-label", hidden ? "Показать оглавление" : "Скрыть оглавление");
+}
+
+function tocHidden() {
+  return root.dataset.tocHidden === "true";
+}
+
+function restoreTocVisibility() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(TOC_KEY);
+  } catch {
+    saved = null;
+  }
+  applyTocVisibility(saved === "true");
+}
+
+tocToggle?.addEventListener("click", () => {
+  const hidden = !tocHidden();
+  applyTocVisibility(hidden);
+  try {
+    localStorage.setItem(TOC_KEY, String(hidden));
+  } catch {
+    // Запись недоступна — оглавление просто вернётся при следующем открытии.
+  }
+  // Панель ушла или вернулась, значит доступная ширина изменилась: заявленные
+  // ширины пересчитываем сразу, а не ждём, пока человек тронет окно.
+  resyncPanes();
+});
+
 window.addEventListener("resize", scheduleResync);
 
+restoreTocVisibility();
 restoreWidths();

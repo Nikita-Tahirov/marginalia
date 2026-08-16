@@ -563,6 +563,74 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
   await expect(page.locator("#document-select")).toContainText("2026.07.02_автореферат.md");
 });
 
+// Панель тянут мышью до 300px, и на этой ширине её верхний ряд однажды
+// разъезжался на две строки, съедая место у самой рецензии. Меряем не ширину
+// содержимого, а то, на скольких строках оно оказалось.
+test("keeps the review toolbar on a single row down to the narrowest pane", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const toolbar = () =>
+    page.evaluate(() => {
+      const bar = document.querySelector(".review-toolbar");
+      const children = [...bar.children].filter((node) => node.getBoundingClientRect().width > 0);
+      // Ряд выровнен по центру, поэтому строки различают середины, а не верхние
+      // края: у элементов разной высоты они и в одной строке не совпадают.
+      const centers = children.map((node) => {
+        const rect = node.getBoundingClientRect();
+        return Math.round(rect.top + rect.height / 2);
+      });
+      return {
+        rows: new Set(centers).size,
+        height: Math.round(bar.getBoundingClientRect().height),
+        clipped: bar.scrollWidth > bar.clientWidth + 1,
+        openReviewVisible:
+          document.querySelector("#open-review").getBoundingClientRect().width > 0,
+      };
+    });
+
+  for (const width of [760, 520, 360, 300]) {
+    await page.evaluate((value) => {
+      document.documentElement.style.setProperty("--review-width", `${value}px`);
+    }, width);
+    const measured = await toolbar();
+    expect(measured.rows, `ширина ${width}`).toBe(1);
+    expect(measured.height, `ширина ${width}`).toBeLessThanOrEqual(48);
+    expect(measured.clipped, `ширина ${width}`).toBe(false);
+    // Действие не исчезает вместе с подписью: сжимается только сама подпись.
+    expect(measured.openReviewVisible, `ширина ${width}`).toBe(true);
+  }
+});
+
+test("hides and restores the contents pane and remembers the choice", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const columns = () =>
+    page.evaluate(
+      () => getComputedStyle(document.querySelector(".workspace")).gridTemplateColumns.split(" ").length,
+    );
+
+  await expect(page.locator("#toc-bar")).toBeVisible();
+  expect(await columns()).toBe(5);
+
+  await page.locator("#toggle-toc").click();
+  await expect(page.locator("#toc-bar")).toBeHidden();
+  await expect(page.locator('.pane-resizer[data-resize="toc"]')).toBeHidden();
+  await expect(page.locator("#toggle-toc")).toHaveAttribute("aria-pressed", "false");
+  expect(await columns()).toBe(3);
+
+  // Раскладка, выбранная руками, переживает перезагрузку — как и ширина панелей.
+  await page.reload();
+  await expect(page.locator("#toc-bar")).toBeHidden();
+  expect(await columns()).toBe(3);
+
+  await page.locator("#toggle-toc").click();
+  await expect(page.locator("#toc-bar")).toBeVisible();
+  await expect(page.locator("#toc-list")).toContainText("Заголовок");
+  expect(await columns()).toBe(5);
+});
+
 test("resizes panes by pointer and keyboard and remembers the widths", async ({ page }) => {
   await page.goto("/");
   const paneWidths = () =>
