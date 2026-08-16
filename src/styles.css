@@ -124,9 +124,17 @@
   --toc-width: 248px;
   --review-width: 520px;
   --resizer-width: 7px;
+  /* Цвет замечания говорит, что оно делает с текстом: красный убирает,
+     янтарный правит на месте, зелёный даёт новую редакцию, а синий ничего не
+     меняет — вопрос обращён к автору. Порядок тот же, что у светофора, и
+     читается до того, как прочитана подпись. */
+  --edit: #b07b2f;
+  --question: #3a5b86;
   --danger: #8b342d;
-  --question: #6d5b8e;
-  --rewrite: #426b67;
+  --rewrite: #4a7a4e;
+  /* Найденное поиском — не тип замечания, и цвет у него свой: раньше он делил
+     переменную с «Вопросом» и вслед за ним сменил бы смысл. */
+  --search-hit: #6d5b8e;
   --focus-ring: var(--color-accent-700);
 }
 
@@ -157,9 +165,11 @@
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 32%);
   --shadow-md: 0 4px 14px rgb(0 0 0 / 38%);
   --shadow-lg: 0 14px 38px rgb(0 0 0 / 48%);
+  --edit: #dfb36e;
+  --question: #9db8dd;
   --danger: #dc8c82;
-  --question: #b9a9d7;
-  --rewrite: #8ebdb8;
+  --rewrite: #8fbf94;
+  --search-hit: #b9a9d7;
   --focus-ring: var(--color-accent-500);
 }
 
@@ -583,6 +593,10 @@ body[data-resizing] {
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
+.filter-chip.type-правка.is-active {
+  color: var(--edit);
+}
+
 .filter-chip.type-вопрос.is-active {
   color: var(--question);
 }
@@ -644,7 +658,7 @@ body[data-resizing] {
   flex: none;
   padding: var(--space-3);
   border: 1px solid var(--color-divider);
-  border-left: 2px solid var(--color-accent-500);
+  border-left: 2px solid var(--edit);
   border-radius: var(--radius-sm);
   background: var(--color-neutral-100);
   transition: border-color 120ms ease, box-shadow 120ms ease;
@@ -689,7 +703,7 @@ body[data-resizing] {
   padding: 2px 6px;
   border: 1px solid currentColor;
   border-radius: 999px;
-  color: var(--color-accent-700);
+  color: var(--edit);
   font-size: 10px;
   line-height: 1.3;
 }
@@ -872,6 +886,10 @@ body[data-resizing] {
   color: var(--color-accent-800);
   border-color: currentColor;
   background: var(--color-accent-100);
+}
+
+.draft-type.type-правка.is-active {
+  color: var(--edit);
 }
 
 .draft-type.type-вопрос.is-active {
@@ -1260,12 +1278,12 @@ body[data-resizing] {
 }
 
 .source-line.is-search-hit {
-  background-color: color-mix(in srgb, var(--question) 16%, transparent);
+  background-color: color-mix(in srgb, var(--search-hit) 16%, transparent);
 }
 
 .source-line.is-current-search-hit {
-  background-color: color-mix(in srgb, var(--question) 32%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--question) 24%, transparent);
+  background-color: color-mix(in srgb, var(--search-hit) 32%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--search-hit) 24%, transparent);
 }
 
 .thematic-line {
