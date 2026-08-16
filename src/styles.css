@@ -917,10 +917,13 @@ body[data-resizing] {
     background 120ms ease;
 }
 
-/* Знак показывают при наведении на всю колонку, а не на сам зазор: искать
-   невидимую кнопку по промежуткам пришлось бы наугад. С клавиатуры её
-   находит фокус. */
-.review-list:hover .insert-note,
+/* Знак загорается только у того промежутка, к которому человек подвёл курсор:
+   соседи сверху и снизу и сам зазор. Показывать их разом по наведению на всю
+   колонку значило бы засеять её десятком плюсов от одного лишь присутствия
+   мыши в панели. С клавиатуры знак находит фокус. */
+.review-card:hover + .card-insert .insert-note,
+.card-insert:has(+ .review-card:hover) .insert-note,
+.card-insert .insert-note:hover,
 .card-insert .insert-note:focus-visible {
   opacity: 1;
 }

@@ -1027,6 +1027,15 @@ test("offers a plus between notes instead of a button inside every card", async 
   // Точка вставки есть после каждого замечания, включая крайнее, и несёт
   // подсказку, по которой её узнают.
   await expect(page.locator(".card-insert .insert-note")).toHaveCount(2);
+
+  // Пока курсор не на замечании, знаков не видно — присутствия мыши в панели
+  // для этого мало.
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".card-insert .insert-note").first()).toHaveCSS("opacity", "0");
+  await page.locator(".review-card").first().hover();
+  await expect(page.locator(".card-insert .insert-note").first()).toHaveCSS("opacity", "1");
+  // Загорается только свой промежуток, а не все разом.
+  await expect(page.locator(".card-insert .insert-note").last()).toHaveCSS("opacity", "0");
   await expect(page.locator(".card-insert .insert-note").first()).toHaveAttribute(
     "data-tooltip",
     "Добавить замечание",
