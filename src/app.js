@@ -62,6 +62,8 @@ const elements = {
   themeToggle: document.querySelector("#theme-toggle"),
   tocList: document.querySelector("#toc-list"),
   documentMeta: document.querySelector("#document-meta"),
+  documentLines: document.querySelector("#document-lines"),
+  documentNotes: document.querySelector("#document-notes"),
   filterList: document.querySelector("#filter-list"),
   addGeneral: document.querySelector("#add-general"),
   reviewList: document.querySelector("#review-list"),
@@ -190,6 +192,44 @@ function updateHeader() {
   elements.copyReview.disabled = !doc || count === 0;
   elements.saveReview.disabled = !doc || count === 0;
   elements.previewReview.disabled = !doc || count === 0;
+
+  // Замечаний столько, сколько их записано: черновик, который человек сейчас
+  // печатает, ещё ничего не значит и в счёт не идёт.
+  setMetaChip(
+    elements.documentNotes,
+    doc ? count : null,
+    plural(count, "замечание", "замечания", "замечаний"),
+  );
+}
+
+// Число и подпись — разные узлы: на узкой шапке подпись убирается стилями, и
+// тогда полностью её называет подсказка.
+function setMetaChip(chip, count, word) {
+  if (count === null) {
+    chip.replaceChildren();
+    chip.removeAttribute("data-tooltip");
+    return;
+  }
+  const value = document.createElement("span");
+  value.textContent = String(count);
+  const label = document.createElement("span");
+  label.className = "meta-word";
+  // Пробел живёт внутри скрываемого узла: убрали подпись — исчез и он, а текст
+  // счётчика остаётся читаемым для проверок и для чтения с экрана.
+  label.textContent = ` ${word}`;
+  chip.replaceChildren(value, label);
+  chip.dataset.tooltip = `${count} ${word}`;
+}
+
+// Русское число согласуется со словом, и «1 строк» в шапке читается как
+// недоделка. Разбор один на оба счётчика: их два и оба на виду.
+function plural(count, one, few, many) {
+  const tens = count % 100;
+  if (tens > 10 && tens < 20) return many;
+  const units = count % 10;
+  if (units === 1) return one;
+  if (units >= 2 && units <= 4) return few;
+  return many;
 }
 
 const FILTER_ICONS = {
@@ -483,13 +523,14 @@ function renderDocument() {
     elements.documentEmpty.hidden = false;
     elements.documentBody.dataset.rendered = "complete";
     elements.tocList.innerHTML = `<span class="toc-empty">Откройте документ</span>`;
-    elements.documentMeta.textContent = "";
+    setMetaChip(elements.documentLines, null);
     return;
   }
 
   elements.documentEmpty.hidden = true;
   elements.documentBody.hidden = false;
-  elements.documentMeta.textContent = `${doc.lineData.lines.length} строк`;
+  const lines = doc.lineData.lines.length;
+  setMetaChip(elements.documentLines, lines, plural(lines, "строка", "строки", "строк"));
 
   if (doc.text.length === 0) {
     const empty = document.createElement("div");

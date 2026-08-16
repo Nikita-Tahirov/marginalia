@@ -94,7 +94,8 @@ async function commitDraft(page, comment, replacement = "") {
 test("loads documents, searches and keeps per-document reviews", async ({ page }) => {
   await page.goto("/");
   await loadMarkdown(page);
-  await expect(page.locator("#document-meta")).toHaveText("9 строк");
+  await expect(page.locator("#document-lines")).toHaveText("9 строк");
+  await expect(page.locator("#document-notes")).toHaveText("0 замечаний");
   await expect(page.locator("#toc-list")).toContainText("Заголовок");
   await expect(page.locator("#toc-list")).toContainText("Раздел");
 
@@ -106,6 +107,7 @@ test("loads documents, searches and keeps per-document reviews", async ({ page }
   await quoteWholeLine(page, 3, "Правка");
   await commitDraft(page, "Уточнить формулировку.", "Исправленная строка.");
   await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator("#document-notes")).toHaveText("1 замечание");
 
   await loadMarkdown(page, "second.md", "# Второй\n\nТекст.\n");
   await expect(page.locator(".review-card")).toHaveCount(0);
@@ -653,9 +655,15 @@ test("fits desktop and tablet widths without sideways scrolling", async ({ page 
       documentNameWidth: document.querySelector("#document-select").getBoundingClientRect().width,
       documentNameTitle: document.querySelector("#document-select").title,
       // Ищем число строк по всему приложению, а не в заранее известном месте:
-      // проверка обязана краснеть на любом втором его упоминании.
+      // проверка обязана краснеть на любом втором его упоминании. Считаем самый
+      // глубокий узел с такой подписью: число и слово живут в разных узлах,
+      // чтобы на узкой шапке слово можно было убрать.
       lineCounts: [...document.querySelectorAll("#app *")]
-        .filter((node) => !node.children.length && /^\d+\s+(строк|стр)/.test(node.textContent.trim()))
+        .filter((node) => /^\d+\s+(строк|стр)/.test(node.textContent.trim()))
+        .filter(
+          (node) =>
+            ![...node.children].some((child) => /^\d+\s+(строк|стр)/.test(child.textContent.trim())),
+        )
         .map((node) => node.textContent.trim()),
     }));
 
@@ -1004,7 +1012,8 @@ test("keeps the front matter out of the text without moving a single line", asyn
   await expect(page.locator("#document-body")).not.toContainText("title:");
   await expect(page.locator("#toc-list")).toHaveText("Настоящий заголовок");
   // Длина документа считается по файлу целиком: вводная часть в нём есть.
-  await expect(page.locator("#document-meta")).toHaveText("9 строк");
+  await expect(page.locator("#document-lines")).toHaveText("9 строк");
+  await expect(page.locator("#document-notes")).toHaveText("0 замечаний");
 
   // Восьмая строка файла осталась восьмой и в разметке, и в замечании.
   await expect(page.locator('.source-line[data-source-line="8"]')).toContainText(

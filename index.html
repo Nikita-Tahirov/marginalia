@@ -42,10 +42,15 @@
           <select id="document-select" class="document-select" disabled>
             <option>Документ не открыт</option>
           </select>
-          <!-- Длина документа стоит рядом с его именем: это свойство открытой
-               статьи, а не оглавления, и остаётся на виду, когда оглавление
-               скрыто. Второго места, где называется то же число, нет. -->
-          <span id="document-meta" class="document-meta"></span>
+          <!-- Длина документа и объём рецензии стоят рядом с именем статьи: это
+               свойства открытой статьи, а не оглавления, и остаются на виду,
+               когда оглавление скрыто. Второго места, где называются те же
+               числа, нет: счётчики над рецензией считают по типам и молчат об
+               общих замечаниях. -->
+          <span id="document-meta" class="document-meta">
+            <span id="document-lines" class="meta-chip"></span>
+            <span id="document-notes" class="meta-chip"></span>
+          </span>
           <button id="open-files" class="btn btn-secondary compact-btn" type="button">
             Открыть .md
           </button>

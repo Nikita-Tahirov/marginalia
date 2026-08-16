@@ -144,7 +144,7 @@ async function openArticle(page, lines, name) {
   });
   // Ждём не счётчика строк, а завершения сборки документа: она идёт порциями,
   // и замер, снятый на половине пути, показал бы половину работы.
-  await expect(page.locator("#document-meta")).toHaveText(`${lines} строк`, { timeout: 600_000 });
+  await expect(page.locator("#document-lines")).toHaveText(`${lines} строк`, { timeout: 600_000 });
   await expect(page.locator("#document-body")).toHaveAttribute("data-rendered", "complete", {
     timeout: 600_000,
   });
