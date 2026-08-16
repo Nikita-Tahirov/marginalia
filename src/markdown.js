@@ -106,6 +106,24 @@ markdown.renderer.rules.hr = (tokens, index, _options, env) => {
   return `<div class="thematic-line">${lineSpan(line, env)}<hr></span></div>`;
 };
 
+// Вводная часть — служебные поля файла, а не текст статьи: вычитывают не их.
+// markdown-it о ней не знает и читает закрывающие «---» как подчёркивание
+// заголовка, поэтому метаданные попадали и в текст, и в оглавление — крупным
+// заголовком поверх настоящего.
+//
+// Строки не удаляются, а заменяются пустыми: на номерах физических строк
+// держится вся привязка замечаний, и сдвиг на длину вводной части увёл бы
+// каждую уже написанную рецензию мимо своего места.
+const FRONT_MATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?(?:---|\.\.\.)[ \t]*(?=\r?\n|$)/;
+
+export function stripFrontMatter(text) {
+  const source = String(text ?? "");
+  const match = FRONT_MATTER.exec(source);
+  if (!match) return source;
+  const lines = match[0].split(/\r\n|\r|\n/).length;
+  return "\n".repeat(lines - 1) + source.slice(match[0].length);
+}
+
 // Границы блоков верхнего уровня: место, где вложенность вернулась к нулю.
 // По ним документ можно собирать частями, не разрезая ни абзац, ни таблицу.
 function topLevelRanges(tokens) {
@@ -129,7 +147,7 @@ function topLevelRanges(tokens) {
 // без последствий: превращение уже разобранных блоков в узлы страницы.
 export function planMarkdown(text) {
   const env = { __seenLines: new Set(), __currentInlineLine: 1 };
-  const tokens = markdown.parse(text, env);
+  const tokens = markdown.parse(stripFrontMatter(text), env);
   return { tokens, env, ranges: topLevelRanges(tokens) };
 }
 
@@ -141,7 +159,7 @@ export function renderTokenRange(plan, [from, to]) {
 
 export function renderMarkdown(text) {
   const env = { __seenLines: new Set(), __currentInlineLine: 1 };
-  return sanitizeToFragment(markdown.render(text, env));
+  return sanitizeToFragment(markdown.render(stripFrontMatter(text), env));
 }
 
 function sanitizeToFragment(html) {

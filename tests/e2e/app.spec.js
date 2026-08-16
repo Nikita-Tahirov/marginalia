@@ -819,6 +819,8 @@ test("opens pasted text from the clipboard, by hand and reports an empty buffer"
   await page.locator("#paste-text").click();
   await expect(page.locator("#document-select")).toContainText("Статья из буфера");
   await expect(page.locator("#document-body")).toContainText("Первый абзац.");
+  // Имя берётся из вводной части, хотя в самом тексте её больше не показывают.
+  await expect(page.locator("#document-body")).not.toContainText("title:");
   await expect(page.locator("#paste-dialog")).not.toBeVisible();
 
   // В буфере нет текста: человеку сообщают об этом, окно не открывается.
@@ -841,6 +843,52 @@ test("opens pasted text from the clipboard, by hand and reports an empty buffer"
   // Ни заголовка, ни поля title — остаётся честное общее имя.
   await expect(page.locator("#document-select")).toContainText("Вставленный текст");
   await expect(page.locator("#document-body")).toContainText("Текст без заголовка");
+});
+
+// Вводная часть — поля файла, а не текст статьи, и markdown-it читал её
+// закрывающие «---» как подчёркивание заголовка: метаданные вставали в текст
+// крупным заголовком и первым пунктом оглавления. Убрать их мало — привязка
+// замечаний держится на номерах физических строк, и они обязаны устоять.
+test("keeps the front matter out of the text without moving a single line", async ({ page }) => {
+  const withFrontMatter = [
+    "---",
+    'title: "Статья с метаданными"',
+    "status: черновик",
+    "---",
+    "",
+    "# Настоящий заголовок",
+    "",
+    "Абзац, к которому пишут замечание.",
+    "",
+  ].join("\n");
+
+  await page.goto("/");
+  await loadMarkdown(page, "meta.md", withFrontMatter);
+
+  await expect(page.locator("#document-body")).not.toContainText("schema_version");
+  await expect(page.locator("#document-body")).not.toContainText("status:");
+  await expect(page.locator("#document-body")).not.toContainText("title:");
+  await expect(page.locator("#toc-list")).toHaveText("Настоящий заголовок");
+  // Длина документа считается по файлу целиком: вводная часть в нём есть.
+  await expect(page.locator("#document-meta")).toHaveText("9 строк");
+
+  // Восьмая строка файла осталась восьмой и в разметке, и в замечании.
+  await expect(page.locator('.source-line[data-source-line="8"]')).toContainText(
+    "Абзац, к которому пишут замечание.",
+  );
+  await quoteWholeLine(page, 8, "Вопрос");
+  await commitDraft(page, "Замечание к строке после метаданных.");
+  await expect(page.locator(".review-card .line-link")).toHaveText("строка 8");
+  await expect(page.locator(".review-card blockquote")).toContainText("Абзац, к которому пишут");
+
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText("### Строка 8 · Вопрос");
+  await page.locator("#close-preview").click();
+
+  // Черта посреди статьи остаётся чертой: вырезается только вводная часть.
+  await loadMarkdown(page, "rule.md", "# Заголовок\n\nПервый абзац.\n\n---\n\nВторой абзац.\n");
+  await expect(page.locator("#document-body hr")).toHaveCount(1);
+  await expect(page.locator("#document-body")).toContainText("Второй абзац.");
 });
 
 test("renames the article without loosening its grip on the review", async ({ page }) => {
