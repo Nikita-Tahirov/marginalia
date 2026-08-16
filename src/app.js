@@ -303,7 +303,10 @@ function anchoredCard(entry) {
 // — колонку раздвигает только зазор списка, а не спрятанная кнопка.
 function insertPoint(entry) {
   const id = escapeHtml(entry.id);
-  return `<div class="card-insert"><button type="button" class="insert-note" data-action="add-general-after" data-entry-id="${id}" data-tooltip="Добавить замечание" aria-label="Добавить замечание"><span class="mi" aria-hidden="true">add</span></button></div>`;
+  // Плюс нарисован здесь, а не взят из шрифта иконок: тот урезан до девяти
+  // глифов, которые уже нужны интерфейсу, и ради одной черты его пришлось бы
+  // запрашивать заново снаружи.
+  return `<div class="card-insert"><button type="button" class="insert-note" data-action="add-general-after" data-entry-id="${id}" data-tooltip="Добавить замечание" aria-label="Добавить замечание"><svg class="glyph" aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 3v7M3 6.5h7"></path></svg></button></div>`;
 }
 
 function commentBlock(entry) {

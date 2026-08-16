@@ -932,10 +932,6 @@ body[data-resizing] {
   background: var(--color-accent-100);
 }
 
-.insert-note .mi {
-  font-size: 15px;
-}
-
 .draft-card {
   border-color: var(--color-accent-600);
   box-shadow: var(--shadow-sm);
