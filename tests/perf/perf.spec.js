@@ -207,8 +207,8 @@ test.describe("отзывчивость на слабом устройстве",
     await line.press("Enter");
     await expect(page.locator("#quote-toolbar")).toBeVisible();
     await page.locator('#quote-toolbar [data-quote-type="Правка"]').click();
-    await page.locator("#draft-comment").fill("Замечание для замера отклика.");
-    await page.locator('[data-action="commit-draft"]').click();
+    await page.locator("#edit-comment").fill("Замечание для замера отклика.");
+    await page.locator("#edit-comment").press("Control+Enter");
     await expect(page.locator(".review-card")).toHaveCount(1);
     const editing = await collectLongTasks(page);
     report("цитирование строки и добавление замечания", editing, ACTION_LIMIT_LARGE_MS);

@@ -85,7 +85,16 @@ async function storedComments(page) {
   );
 }
 
+// Привязанное замечание существует с того мгновения, как назван его тип, и
+// сразу открыто для письма: подтверждать нечего. Общее замечание без текста
+// пусто целиком — его добавляют кнопкой.
 async function commitDraft(page, comment, replacement = "") {
+  if (await page.locator("#edit-comment").count()) {
+    await page.locator("#edit-comment").fill(comment);
+    if (replacement) await page.locator("#edit-replacement").fill(replacement);
+    await page.locator("#edit-comment").press("Control+Enter");
+    return;
+  }
   await page.locator("#draft-comment").fill(comment);
   if (replacement) await page.locator("#draft-replacement").fill(replacement);
   await page.locator('[data-action="commit-draft"]').click();
@@ -208,24 +217,22 @@ test("edits an added note in place and keeps the edit after a reload", async ({ 
   await commitDraft(page, "Первая формулировка.", "Первая замена.");
   await expect(page.locator(".review-card .type-badge")).toHaveText("Правка");
 
-  await page.locator('.review-card [data-action="edit"]').click();
+  // Правят по самому тексту: кнопка «Изменить» для этого больше не нужна.
+  await page.locator(".review-card .card-comment").click();
   // Цитата и строка — якорь записи, а не её содержание: их форма правки не даёт.
   await expect(page.locator(".edit-card blockquote")).toContainText("Первая строка с целью.");
   await expect(page.locator(".edit-card")).toContainText("строка 3");
+  await expect(page.locator("#edit-comment")).toBeFocused();
   await expect(page.locator("#edit-comment")).toHaveValue("Первая формулировка.");
   await expect(page.locator("#edit-replacement")).toHaveValue("Первая замена.");
 
-  // Передумал: «Отмена» возвращает прежний текст, а не набранный черновик.
-  await page.locator("#edit-comment").fill("Случайный набор.");
-  await page.locator('[data-action="cancel-edit"]').click();
-  await expect(page.locator(".review-card .card-comment")).toHaveText("Первая формулировка.");
-
-  await page.locator('.review-card [data-action="edit"]').click();
+  // Написанное сохраняется само: подтверждать нечего, и уход из формы уносит
+  // не черновик, а готовую запись.
   await page.locator("#edit-comment").fill("Уточнённая формулировка.");
   await page.locator("#edit-replacement").fill("Уточнённая замена.");
   await page.locator('.edit-card [data-action="edit-type"][data-type="Вопрос"]').click();
   await expect(page.locator("#edit-comment")).toHaveValue("Уточнённая формулировка.");
-  await page.locator('[data-action="commit-edit"]').click();
+  await page.locator("#edit-comment").press("Escape");
 
   await expect(page.locator(".review-card .card-comment")).toHaveText("Уточнённая формулировка.");
   await expect(page.locator(".review-card .replacement p")).toHaveText("Уточнённая замена.");
@@ -245,15 +252,26 @@ test("edits an added note in place and keeps the edit after a reload", async ({ 
   await expect(page.locator("#preview-content")).toContainText("Уточнённая формулировка.");
   await page.locator("#close-preview").click();
 
+  // Клик по замене открывает её же поле, а не комментарий.
+  await page.locator(".review-card .replacement").click();
+  await expect(page.locator("#edit-replacement")).toBeFocused();
+  await page.locator("#edit-replacement").fill("Замена, переписанная на месте.");
+  await page.locator("#edit-replacement").press("Escape");
+  await expect(page.locator(".review-card .replacement p")).toHaveText(
+    "Замена, переписанная на месте.",
+  );
+
   // Общее замечание состоит из одного текста: опустевшим его не сохранить.
   await page.locator("#add-general").click();
   await commitDraft(page, "Общий вывод.");
-  await page.locator('.free-card [data-action="edit"]').click();
-  const commitEdit = page.locator('[data-action="commit-edit"]');
+  await page.locator(".free-card .card-comment").click();
   await page.locator("#edit-comment").fill("   ");
-  await expect(commitEdit).toBeDisabled();
+  await page.locator("#edit-comment").press("Control+Enter");
+  // Опустевшее общее замечание не записывается: иначе человек стёр бы запись,
+  // не нажав «Удалить».
+  await expect(page.locator(".free-card .card-comment")).toHaveText("Общий вывод.");
+  await page.locator(".free-card .card-comment").click();
   await page.locator("#edit-comment").fill("Общий вывод, переписанный набело.");
-  await expect(commitEdit).toBeEnabled();
   await page.locator("#edit-comment").press("Control+Enter");
   await expect(page.locator(".free-card .card-comment")).toHaveText(
     "Общий вывод, переписанный набело.",
@@ -352,11 +370,11 @@ test("supports keyboard creation, activation, theme and empty or rejected files"
 
   await loadMarkdown(page);
   await quoteWholeLine(page, 3, "Вопрос");
-  await page.locator("#draft-comment").fill("Клавиатурное замечание.");
-  await page.locator("#draft-comment").press("Control+Enter");
+  await page.locator("#edit-comment").fill("Клавиатурное замечание.");
+  await page.locator("#edit-comment").press("Control+Enter");
   await expect(page.locator(".review-card")).toContainText("Клавиатурное замечание.");
 
-  await page.locator(".review-card .card-comment").click();
+  await page.locator(".review-card blockquote").click();
   await expect(page.locator('[data-source-line="3"].is-active-annotation')).not.toHaveCount(0);
   await page.locator(".review-card").focus();
   await page.locator(".review-card").press("Enter");
@@ -913,14 +931,18 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await loadMarkdown(page);
 
   await quoteWholeLine(page, 3, "Вопрос");
-  await expect(page.locator("#draft-comment")).toBeVisible();
-  // Ни подписи «по желанию», ни надписи об ошибке в форме больше нет.
-  await expect(page.locator(".draft-card")).not.toContainText("по желанию");
-  await expect(page.locator(".draft-card")).not.toContainText("Напишите комментарий");
-  await page.locator('[data-action="commit-draft"]').click();
+  // Запись существует с того мгновения, как назван тип: подтверждать нечего,
+  // и поле открыто сразу.
+  await expect(page.locator("#edit-comment")).toBeFocused();
+  await expect(page.locator(".edit-card")).not.toContainText("Добавить");
+  await expect(page.locator(".edit-card")).not.toContainText("Отмена");
+  await page.locator("#edit-comment").press("Escape");
 
   await expect(page.locator(".review-card")).toHaveCount(1);
-  await expect(page.locator(".review-card .card-comment")).toHaveCount(0);
+  await expect(page.locator("#document-notes")).toHaveText("1 замечание");
+  // Бессловесное замечание остаётся бессловесным: пустой комментарий — это
+  // приглашение дописать, а не текст записи.
+  await expect(page.locator(".review-card .card-comment")).toHaveClass(/is-empty/);
 
   await page.locator("#preview-review").click();
   await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Вопрос");

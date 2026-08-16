@@ -133,8 +133,8 @@ test("the app survives its own security headers", async ({ page }) => {
     await source.focus();
     await source.press("Enter");
     await page.locator('#quote-toolbar [data-quote-type="Правка"]').click();
-    await page.locator("#draft-comment").fill("Замечание под политикой.");
-    await page.locator('[data-action="commit-draft"]').click();
+    await page.locator("#edit-comment").fill("Замечание под политикой.");
+    await page.locator("#edit-comment").press("Control+Enter");
     await expect(page.locator(".review-card")).toHaveCount(1);
 
     // Выгрузка идёт через blob: — ровно тот случай, где строгая политика умеет

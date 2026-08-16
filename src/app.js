@@ -269,10 +269,19 @@ function typeClass(type) {
 // поле не попадает в разметку без экранирования — включая те, что по замыслу
 // содержат число или значение из известного набора. Форму записи проверяет
 // normalizeEntry; это второй рубеж на случай, если она когда-нибудь пропустит.
+// Текст карточки — не витрина, а поле, в которое ещё вернутся: по нему кликают
+// и правят. Поэтому пустые комментарий и замена не исчезают, а остаются
+// приглашением — иначе к записи, начатой одним типом, нечем было бы вернуться.
 function anchoredCard(entry) {
-  const replacement = entry.replacement?.trim()
-    ? `<div class="replacement"><span>Заменить на</span><p>${renderMultiline(entry.replacement.trim())}</p></div>`
-    : "";
+  const written = entry.replacement?.trim();
+  // Замену предлагают там, где она и есть смысл замечания: «Правка» и
+  // «Переписать» без неё неполны, а «Вопрос» и «Удалить» ничего не заменяют —
+  // пустое поле у них было бы приглашением написать ненужное.
+  const invited = entry.type === "Правка" || entry.type === "Переписать";
+  const replacement =
+    written || invited
+      ? `<div class="replacement${written ? "" : " is-empty"}" data-action="edit-field" data-field="replacement" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0"><span>Заменить на</span><p>${written ? renderMultiline(written) : "Текст замены"}</p></div>`
+      : "";
   const active = entry.id === state.activeEntryId ? " is-active" : "";
   const id = escapeHtml(entry.id);
   return `<article class="review-card ${escapeHtml(typeClass(entry.type))}${active}" data-entry-id="${id}" tabindex="0">
@@ -283,12 +292,17 @@ function anchoredCard(entry) {
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить замечание">×</button>
     </header>
     <blockquote>${renderMultiline(entry.quote)}</blockquote>
-    ${entry.comment.trim() ? `<p class="card-comment">${renderMultiline(entry.comment)}</p>` : ""}
+    ${commentBlock(entry)}
     ${replacement}
     <footer class="card-actions">
       <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
     </footer>
   </article>`;
+}
+
+function commentBlock(entry) {
+  const written = entry.comment.trim();
+  return `<p class="card-comment${written ? "" : " is-empty"}" data-action="edit-field" data-field="comment" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0">${written ? renderMultiline(written) : "Комментарий"}</p>`;
 }
 
 function freeCard(entry) {
@@ -300,7 +314,7 @@ function freeCard(entry) {
       <button class="card-edit" type="button" data-action="edit" data-entry-id="${id}" aria-label="Изменить общее замечание"><span class="mi" aria-hidden="true">edit</span></button>
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить общее замечание">×</button>
     </header>
-    <p class="card-comment">${renderMultiline(entry.comment)}</p>
+    ${commentBlock(entry)}
     <footer class="card-actions">
       <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
     </footer>
@@ -349,20 +363,18 @@ function draftCard(entry) {
 function editCard(entry) {
   const edit = state.edit;
   const anchored = entry.kind === "anchored";
-  const ready = anchored || Boolean(edit.comment.trim());
-  return `<article class="review-card draft-card edit-card" data-entry-id="${escapeHtml(entry.id)}">
+  return `<article class="review-card draft-card edit-card ${escapeHtml(typeClass(edit.type))}" data-entry-id="${escapeHtml(entry.id)}">
     <header class="draft-heading">
-      <span>Правка ${anchored ? "замечания" : "общего замечания"}</span>
+      <span>${anchored ? "Замечание" : "Общее замечание"}</span>
       <span>${anchored ? escapeHtml(lineHeading(entry).toLowerCase()) : "без строки"}</span>
     </header>
     ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(edit.type, "edit-type")}</div>` : ""}
     <label class="draft-label" for="edit-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
     <textarea id="edit-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}>${escapeHtml(edit.comment)}</textarea>
     ${anchored ? `<label class="draft-label" for="edit-replacement">Заменить на</label><textarea id="edit-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(edit.replacement)}</textarea>` : ""}
-    <div class="draft-actions">
-      <button class="btn btn-primary compact-btn" type="button" data-action="commit-edit"${ready ? "" : " disabled"}>Сохранить</button>
-      <button class="btn btn-ghost compact-btn" type="button" data-action="cancel-edit">Отмена</button>
-      <span>⌘/Ctrl+Enter</span>
+    <div class="draft-actions draft-hint">
+      <span>Сохраняется само</span>
+      <span>Esc или ⌘/Ctrl+Enter — закончить</span>
     </div>
   </article>`;
 }
@@ -806,7 +818,11 @@ async function persistReview(doc, notice = null) {
   const written = await storeReview(doc.id, doc.entries, doc.sequence);
   const saved = written !== null;
   showSaveState(saved ? "saved" : "failed");
-  if (notice) showToast(saved ? notice.saved : notice.failed, saved ? "info" : "error");
+  // Об удачной записи говорят не всегда: замечание, созданное выделением,
+  // человек в этот момент ещё пишет, и сообщение поверх формы было бы помехой.
+  // О потере данных молчать нельзя никогда.
+  const message = saved ? notice?.saved : notice?.failed;
+  if (message) showToast(message, saved ? "info" : "error");
   // Устойчивость просим в момент, когда появились данные, которые больно
   // потерять: на пустом приложении запрос выглядел бы беспричинным. Браузер
   // отказывает свежему сайту без истории посещений, поэтому попытку повторяем
@@ -1161,15 +1177,19 @@ function handleSelection() {
   if (info) showQuoteToolbar(info);
 }
 
-function createAnchoredDraft(type) {
+// Выделив место и назвав тип, человек уже сказал главное: замечание есть.
+// Ждать от него ещё и нажатия «Добавить» незачем — запись создаётся сразу и
+// сразу открыта для письма. Передумал — удаляет её крестиком, как всякую
+// другую; привязанное замечание осмысленно и без слов.
+function createAnchoredEntry(type) {
   const doc = activeDocument();
   const selected = state.pendingSelection;
   if (!doc || !selected) return;
-  state.draft = {
+  const entry = {
     id: crypto.randomUUID(),
     documentId: doc.id,
     kind: "anchored",
-    status: "draft",
+    status: "committed",
     type,
     quote: selected.quote,
     comment: "",
@@ -1180,10 +1200,13 @@ function createAnchoredDraft(type) {
     endColumn: selected.endColumn,
     sequence: nextSequence(doc),
   };
+  doc.entries.push(entry);
   window.getSelection()?.removeAllRanges();
-  state.pendingSelection = null;
   hideQuoteToolbar();
-  refreshReviewState({ focus: "#draft-comment" });
+  state.activeEntryId = entry.id;
+  state.edit = { id: entry.id, type, comment: "", replacement: "", fresh: true };
+  refreshReviewState({ focus: "#edit-comment" });
+  persistReview(doc, { failed: "Замечание добавлено, но не сохранено." });
 }
 
 function createFreeDraft(afterEntry = null) {
@@ -1247,9 +1270,10 @@ function cancelDraft() {
 // Замечание пишут по ходу чтения и нередко потом перечитывают: формулировка
 // оказывается резкой, тип — неточным, замена — с опечаткой. Раньше оставалось
 // удалить запись и написать её заново, потеряв и место в рецензии, и цитату.
-function startEdit(id) {
+function startEdit(id, field = "comment") {
   const entry = activeDocument()?.entries.find((item) => item.id === id);
   if (!entry) return;
+  if (state.edit?.id === id) return;
   if (state.draft) {
     showToast("Сначала добавьте или отмените текущий черновик.", "error");
     elements.reviewList.querySelector("#draft-comment")?.focus();
@@ -1262,7 +1286,7 @@ function startEdit(id) {
     replacement: entry.replacement ?? "",
   };
   if (entry.kind === "anchored") state.activeEntryId = entry.id;
-  refreshReviewState({ focus: "#edit-comment" });
+  refreshReviewState({ focus: field === "replacement" ? "#edit-replacement" : "#edit-comment" });
 }
 
 function syncEditFields() {
@@ -1273,7 +1297,40 @@ function syncEditFields() {
   if (replacement) state.edit.replacement = replacement.value;
 }
 
+// Написанное сохраняется по ходу письма, поэтому запись обновляется на месте:
+// перерисовать список — значит выбить у человека из-под рук поле и курсор.
+// Всё, что вне формы — счётчики, фильтры, цвет цитаты в тексте, — обновляется.
+let editSaveTimer = 0;
+
+function saveEditQuietly() {
+  const doc = activeDocument();
+  if (!doc || !state.edit) return;
+  syncEditFields();
+  const entry = doc.entries.find((item) => item.id === state.edit.id);
+  if (!entry) return;
+  const comment = state.edit.comment.trim();
+  // Общее замечание состоит из одного текста: опустошив его, человек стёр бы
+  // саму запись, не нажав «Удалить». Пустое поле просто не записывается.
+  if (entry.kind === "free" && !comment) return;
+
+  entry.comment = comment;
+  if (entry.kind === "anchored") {
+    if (REVIEW_TYPES.includes(state.edit.type)) entry.type = state.edit.type;
+    entry.replacement = state.edit.replacement.trim();
+  }
+  updateHeader();
+  renderFilters();
+  applyAnnotationMarkers();
+  persistReview(doc);
+}
+
+function scheduleEditSave() {
+  clearTimeout(editSaveTimer);
+  editSaveTimer = setTimeout(saveEditQuietly, 600);
+}
+
 function commitEdit() {
+  clearTimeout(editSaveTimer);
   const doc = activeDocument();
   if (!doc || !state.edit) return;
   syncEditFields();
@@ -1286,25 +1343,29 @@ function commitEdit() {
 
   const comment = state.edit.comment.trim();
   // Общее замечание состоит из одного текста: опустошив его, человек стёр бы
-  // саму запись, не нажав «Удалить». Кнопка в этот момент и так неактивна.
-  if (entry.kind === "free" && !comment) return;
+  // саму запись, не нажав «Удалить». Правка тогда не принимается, но и держать
+  // человека в форме нельзя — запись возвращается к прежнему тексту.
+  if (entry.kind === "free" && !comment) {
+    state.edit = null;
+    refreshReviewState();
+    showToast("Общее замечание состоит из текста: пустым оно не сохраняется.", "error");
+    return;
+  }
 
   entry.comment = comment;
   if (entry.kind === "anchored") {
     if (REVIEW_TYPES.includes(state.edit.type)) entry.type = state.edit.type;
     entry.replacement = state.edit.replacement.trim();
   }
+  // Замечание, начатое выделением, для человека добавляется, а не изменяется:
+  // сообщение называет то действие, которое он и совершил.
+  const fresh = state.edit.fresh;
   state.edit = null;
   refreshReviewState();
   persistReview(doc, {
     saved: "Замечание сохранено.",
-    failed: "Замечание изменено, но не сохранено.",
+    failed: fresh ? "Замечание добавлено, но не сохранено." : "Замечание изменено, но не сохранено.",
   });
-}
-
-function cancelEdit() {
-  state.edit = null;
-  refreshReviewState();
 }
 
 function deleteEntry(id) {
@@ -1573,17 +1634,11 @@ elements.filterList.addEventListener("click", (event) => {
 
 elements.reviewList.addEventListener("input", (event) => {
   if (state.edit) {
-    if (event.target.id === "edit-comment") {
-      state.edit.comment = event.target.value;
-      // Карточку целиком не перерисовываем: под руками у человека пропали бы
-      // фокус и место курсора. Меняем только доступность кнопки.
-      const entry = activeDocument()?.entries.find((item) => item.id === state.edit.id);
-      if (entry?.kind === "free") {
-        const commit = elements.reviewList.querySelector('[data-action="commit-edit"]');
-        if (commit) commit.disabled = !event.target.value.trim();
-      }
-    }
+    if (event.target.id === "edit-comment") state.edit.comment = event.target.value;
     if (event.target.id === "edit-replacement") state.edit.replacement = event.target.value;
+    // Записываем не на каждую букву: пауза в письме и есть тот момент, когда
+    // написанное уже имеет смысл сохранять.
+    scheduleEditSave();
     return;
   }
   if (!state.draft) return;
@@ -1599,11 +1654,35 @@ elements.reviewList.addEventListener("input", (event) => {
   if (event.target.id === "draft-replacement") state.draft.replacement = event.target.value;
 });
 
+// Уход из формы завершает правку. Куда именно ушёл фокус, на самом focusout
+// знать нельзя: клик по кнопке, которая фокус не берёт, отдаёт relatedTarget
+// пустым. Поэтому смотрим, где фокус осел, когда все обработчики отработали.
+elements.reviewList.addEventListener("focusout", (event) => {
+  if (!state.edit || !event.target.closest(".edit-card")) return;
+  setTimeout(() => {
+    if (!state.edit) return;
+    const open = elements.reviewList.querySelector(".edit-card");
+    if (open?.contains(document.activeElement)) return;
+    commitEdit();
+  }, 0);
+});
+
 elements.reviewList.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.edit) {
+    event.preventDefault();
+    commitEdit();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && (state.draft || state.edit)) {
     event.preventDefault();
     if (state.draft) commitDraft();
     else commitEdit();
+    return;
+  }
+  const field = event.target.closest('[data-action="edit-field"]');
+  if (field && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    startEdit(field.dataset.entryId, field.dataset.field);
     return;
   }
   const card = event.target.closest(".review-card[data-entry-id]");
@@ -1624,6 +1703,7 @@ elements.reviewList.addEventListener("click", (event) => {
   const id = action.dataset.entryId;
   if (action.dataset.action === "activate") activateEntry(id);
   if (action.dataset.action === "edit") startEdit(id);
+  if (action.dataset.action === "edit-field") startEdit(id, action.dataset.field);
   if (action.dataset.action === "delete") deleteEntry(id);
   if (action.dataset.action === "add-general-after") {
     const entry = activeDocument()?.entries.find((item) => item.id === id);
@@ -1631,8 +1711,7 @@ elements.reviewList.addEventListener("click", (event) => {
   }
   if (action.dataset.action === "commit-draft") commitDraft();
   if (action.dataset.action === "cancel-draft") cancelDraft();
-  if (action.dataset.action === "commit-edit") commitEdit();
-  if (action.dataset.action === "cancel-edit") cancelEdit();
+
   if (action.dataset.action === "draft-type" && state.draft?.kind === "anchored") {
     syncDraftFields();
     state.draft.type = action.dataset.type;
@@ -1641,6 +1720,7 @@ elements.reviewList.addEventListener("click", (event) => {
   if (action.dataset.action === "edit-type" && state.edit) {
     syncEditFields();
     state.edit.type = action.dataset.type;
+    saveEditQuietly();
     renderReview({ focus: "#edit-comment" });
   }
 });
@@ -1664,7 +1744,7 @@ elements.documentBody.addEventListener("keydown", (event) => {
 
 elements.quoteToolbar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-quote-type]");
-  if (button) createAnchoredDraft(button.dataset.quoteType);
+  if (button) createAnchoredEntry(button.dataset.quoteType);
 });
 // Нажатие на саму панель не должно снимать выделение: браузер схлопнул бы его
 // ещё на mousedown, панель ушла бы вместе с ним и клик не дошёл бы до кнопки.
