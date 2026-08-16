@@ -570,6 +570,12 @@ body[data-resizing] {
     padding: 6px var(--space-2);
   }
 
+  /* Список поджимается вместе со строкой действий: иначе на узкой панели
+     общая вертикаль, ради которой поля и сведены, снова разъедется. */
+  .review-list {
+    padding: var(--space-3) var(--space-2);
+  }
+
   .review-toolbar .btn-label {
     display: none;
   }
@@ -663,6 +669,10 @@ body[data-resizing] {
   gap: 6px;
 }
 
+/* Боковое поле то же, что у строки действий над списком: кнопки фильтров и
+   карточки стоят на одной вертикали, и панель читается как одна колонка, а не
+   как два наложенных блока. Тот же размер держит и зазор между карточками —
+   сетка панели одна на всё. */
 .review-list {
   min-height: 0;
   flex: 1;
@@ -670,7 +680,7 @@ body[data-resizing] {
   flex-direction: column;
   gap: var(--space-3);
   overflow-y: auto;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3);
   scroll-behavior: smooth;
 }
 
@@ -890,10 +900,21 @@ body[data-resizing] {
 
 /* Точка вставки сама места не занимает: высота нулевая, и знак висит по
    центру зазора между карточками. Иначе спрятанная кнопка раздвигала бы
-   колонку и в те минуты, когда её никто не ищет. */
+   колонку и в те минуты, когда её никто не ищет.
+   Отрицательные поля съедают половину зазора сверху и снизу: без них между
+   карточками встают два зазора списка подряд, и замечания оказываются дальше
+   друг от друга, чем от краёв панели, — глаз перестаёт читать их как один
+   список. Половина с каждой стороны оставляет знак ровно посередине. */
 .card-insert {
   position: relative;
   height: 0;
+  margin: calc(var(--space-3) / -2) 0;
+}
+
+/* После крайнего замечания компенсировать нечего: снизу не зазор, а поле
+   панели, и знаку нужно место, чтобы не упереться в край. */
+.card-insert:last-child {
+  margin-bottom: 0;
 }
 
 .card-insert .insert-note {
@@ -903,8 +924,8 @@ body[data-resizing] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--color-neutral-400);
   border-radius: 50%;
