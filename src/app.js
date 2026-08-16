@@ -294,10 +294,16 @@ function anchoredCard(entry) {
     <blockquote>${renderMultiline(entry.quote)}</blockquote>
     ${commentBlock(entry)}
     ${replacement}
-    <footer class="card-actions">
-      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
-    </footer>
   </article>`;
+}
+
+// Место вставки живёт между карточками, а не внутри них: добавляют не «к
+// этому замечанию», а в промежуток после него, и подпись «+ Общее после» в
+// каждой карточке отнимала строку у самого замечания. Разметка нулевой высоты
+// — колонку раздвигает только зазор списка, а не спрятанная кнопка.
+function insertPoint(entry) {
+  const id = escapeHtml(entry.id);
+  return `<div class="card-insert"><button type="button" class="insert-note" data-action="add-general-after" data-entry-id="${id}" data-tooltip="Добавить замечание" aria-label="Добавить замечание"><span class="mi" aria-hidden="true">add</span></button></div>`;
 }
 
 function commentBlock(entry) {
@@ -315,9 +321,6 @@ function freeCard(entry) {
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить общее замечание">×</button>
     </header>
     ${commentBlock(entry)}
-    <footer class="card-actions">
-      <button type="button" class="inline-action" data-action="add-general-after" data-entry-id="${id}">+ Общее после</button>
-    </footer>
   </article>`;
 }
 
@@ -395,9 +398,12 @@ function renderReview({ focus = null } = {}) {
 
   elements.reviewList.innerHTML = entries
     .map((entry) => {
+      // Незавершённая запись — черновик и открытая форма правки — ещё не
+      // граница: вставлять после неё нечего, пока она не стала замечанием.
       if (entry.status === "draft") return draftCard(entry);
       if (entry.id === state.edit?.id) return editCard(entry);
-      return entry.kind === "anchored" ? anchoredCard(entry) : freeCard(entry);
+      const card = entry.kind === "anchored" ? anchoredCard(entry) : freeCard(entry);
+      return card + insertPoint(entry);
     })
     .join("");
 

@@ -286,7 +286,10 @@ test("multiple free notes keep their visible place after anchored additions and 
 
   await page.locator('[data-action="add-general-after"]').click();
   await commitDraft(page, "Свободная запись A.");
-  await page.locator('.free-card [data-action="add-general-after"]').click();
+  // Точка вставки стоит между карточками, поэтому её ищут по записи, после
+  // которой она идёт, а не внутри карточки.
+  const afterFree = await page.locator(".free-card").getAttribute("data-entry-id");
+  await page.locator(`.card-insert [data-entry-id="${afterFree}"]`).click();
   await commitDraft(page, "Свободная запись B.");
 
   await quoteWholeLine(page, 4, "Вопрос");
@@ -956,6 +959,45 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await expect(commit).toBeEnabled();
   await page.locator("#draft-comment").fill("   ");
   await expect(commit).toBeDisabled();
+});
+
+test("offers a plus between notes instead of a button inside every card", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3);
+  await commitDraft(page, "Первое замечание.");
+  await quoteWholeLine(page, 4, "Вопрос");
+  await commitDraft(page, "Второе замечание.");
+
+  // Подпись из карточки ушла целиком.
+  await expect(page.locator(".review-list")).not.toContainText("Общее после");
+
+  // Точка вставки есть после каждого замечания, включая крайнее, и несёт
+  // подсказку, по которой её узнают.
+  await expect(page.locator(".card-insert .insert-note")).toHaveCount(2);
+  await expect(page.locator(".card-insert .insert-note").first()).toHaveAttribute(
+    "data-tooltip",
+    "Добавить замечание",
+  );
+
+  // Плюс между двумя замечаниями ставит новое именно между ними.
+  await page.locator(".card-insert .insert-note").first().click();
+  await commitDraft(page, "Вставленное посередине.");
+  await expect(page.locator(".review-card .card-comment")).toHaveText([
+    "Первое замечание.",
+    "Вставленное посередине.",
+    "Второе замечание.",
+  ]);
+
+  // Плюс после крайнего замечания ставит новое в конец.
+  await page.locator(".card-insert .insert-note").last().click();
+  await commitDraft(page, "Дописанное в конце.");
+  await expect(page.locator(".review-card .card-comment")).toHaveText([
+    "Первое замечание.",
+    "Вставленное посередине.",
+    "Второе замечание.",
+    "Дописанное в конце.",
+  ]);
 });
 
 test("keeps the replacement field out of the card until it is written", async ({ page }) => {

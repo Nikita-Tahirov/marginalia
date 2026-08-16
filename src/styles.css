@@ -764,8 +764,7 @@ body[data-resizing] {
   color: var(--color-neutral-700);
 }
 
-.line-link,
-.inline-action {
+.line-link {
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--color-accent-300);
@@ -775,8 +774,7 @@ body[data-resizing] {
   font-size: 11px;
 }
 
-.line-link:hover,
-.inline-action:hover {
+.line-link:hover {
   color: var(--color-accent-800);
 }
 
@@ -890,23 +888,52 @@ body[data-resizing] {
   font-size: 12px;
 }
 
-.card-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: var(--space-2);
-  opacity: 0;
-  transition: opacity 120ms ease;
+/* Точка вставки сама места не занимает: высота нулевая, и знак висит по
+   центру зазора между карточками. Иначе спрятанная кнопка раздвигала бы
+   колонку и в те минуты, когда её никто не ищет. */
+.card-insert {
+  position: relative;
+  height: 0;
 }
 
-.review-card:hover .card-actions,
-.review-card:focus-within .card-actions {
+.card-insert .insert-note {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-neutral-400);
+  border-radius: 50%;
+  color: var(--color-neutral-600);
+  background: var(--color-neutral-100);
+  cursor: pointer;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease,
+    background 120ms ease;
+}
+
+/* Знак показывают при наведении на всю колонку, а не на сам зазор: искать
+   невидимую кнопку по промежуткам пришлось бы наугад. С клавиатуры её
+   находит фокус. */
+.review-list:hover .insert-note,
+.card-insert .insert-note:focus-visible {
   opacity: 1;
 }
 
-.inline-action {
-  border-bottom: 0;
-  color: var(--color-neutral-500);
-  font-size: 10px;
+.card-insert .insert-note:hover,
+.card-insert .insert-note:focus-visible {
+  border-color: var(--color-accent-400);
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+}
+
+.insert-note .mi {
+  font-size: 15px;
 }
 
 .draft-card {
