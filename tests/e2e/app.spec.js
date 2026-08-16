@@ -1063,11 +1063,18 @@ test("offers a plus between notes instead of a button inside every card", async 
   await page.evaluate(() => {
     document.documentElement.style.setProperty("--review-width", "360px");
   });
-  const narrow = await page.evaluate(() => ({
-    toolbarLeft: document.querySelector(".review-toolbar .filter-chip").getBoundingClientRect().left,
-    cardLeft: document.querySelector(".review-card").getBoundingClientRect().left,
-  }));
+  const narrow = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll(".review-card")];
+    const list = document.querySelector(".review-list");
+    return {
+      toolbarLeft: document.querySelector(".review-toolbar .filter-chip").getBoundingClientRect().left,
+      cardLeft: cards[0].getBoundingClientRect().left,
+      gap: cards[1].getBoundingClientRect().top - cards[0].getBoundingClientRect().bottom,
+      sidePadding: Number.parseFloat(getComputedStyle(list).paddingLeft),
+    };
+  });
   expect(Math.abs(narrow.toolbarLeft - narrow.cardLeft)).toBeLessThanOrEqual(1);
+  expect(narrow.gap).toBeLessThanOrEqual(narrow.sidePadding + 1);
   await page.evaluate(() => {
     document.documentElement.style.removeProperty("--review-width");
   });
