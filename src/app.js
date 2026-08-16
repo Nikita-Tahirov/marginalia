@@ -24,7 +24,7 @@ import {
   saveDocument,
   saveReview as storeReview,
 } from "./storage.js";
-import { noticeAfterUpdate } from "./updates.js";
+import { keepAppFresh, noticeAfterUpdate } from "./updates.js";
 import {
   canPromptInstall,
   dismissStorageNotice,
@@ -1847,3 +1847,6 @@ renderReview();
 renderDocument();
 restoreWorkspace();
 noticeAfterUpdate(showToast);
+// Занят — значит открыт черновик или форма правки: там лежит набранный текст,
+// который перезагрузка унесла бы. Всё остальное приложение хранит само.
+keepAppFresh(() => Boolean(state.draft || state.edit));
