@@ -1395,10 +1395,15 @@ body[data-resizing] {
   display: none;
 }
 
+/* Панель тёмная в обеих темах: она лежит поверх статьи, и светлая плашка
+   сливалась бы с бумагой. Поэтому цвета типов берутся здесь светлыми — теми же,
+   что служат тёмной теме. */
 .quote-toolbar button {
-  padding: 8px 9px;
+  --quote-tint: #dfb36e;
+  padding: 8px 9px 6px;
   border: 0;
   border-right: 1px solid #4d4945;
+  border-bottom: 2px solid var(--quote-tint);
   color: #eae7e7;
   background: transparent;
   cursor: pointer;
@@ -1406,10 +1411,24 @@ body[data-resizing] {
   white-space: nowrap;
 }
 
+.quote-toolbar .type-вопрос {
+  --quote-tint: #9db8dd;
+}
+
+.quote-toolbar .type-удалить {
+  --quote-tint: #dc8c82;
+}
+
+.quote-toolbar .type-переписать {
+  --quote-tint: #8fbf94;
+}
+
+/* Наведение показывает не «кнопку под курсором», а цвет, которым ляжет цитата:
+   выбор виден до нажатия. */
 .quote-toolbar button:hover,
 .quote-toolbar button:focus-visible {
-  color: #facb8d;
-  background: #5a3b0a;
+  color: #201f1d;
+  background: var(--quote-tint);
 }
 
 .toast {
