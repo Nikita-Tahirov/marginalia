@@ -961,6 +961,27 @@ test("adds a wordless anchored note but never a wordless general one", async ({ 
   await expect(commit).toBeDisabled();
 });
 
+test("lets the browser spell-check the note fields in Russian", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  const checked = async (field) => {
+    await expect(page.locator(field)).toHaveAttribute("spellcheck", "true");
+    await expect(page.locator(field)).toHaveAttribute("lang", "ru");
+  };
+
+  // Привязанное замечание существует с той минуты, как назван тип, поэтому
+  // пишут его сразу в форме правки.
+  await quoteWholeLine(page, 3);
+  await checked("#edit-comment");
+  await checked("#edit-replacement");
+  await page.locator("#edit-comment").fill("Первое замечание.");
+  await page.locator("#edit-comment").press("Escape");
+
+  // Общее замечание сначала черновик, и текст в нём тоже проверяется.
+  await page.locator("#add-general").click();
+  await checked("#draft-comment");
+});
+
 test("offers a plus between notes instead of a button inside every card", async ({ page }) => {
   await page.goto("/");
   await loadMarkdown(page);

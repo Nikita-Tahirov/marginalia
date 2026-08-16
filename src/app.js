@@ -336,6 +336,14 @@ function typeChoices(activeType, action = "draft-type") {
   ).join("");
 }
 
+// Замечание пишут от руки и по-русски, а перечитывают его уже в чужом файле:
+// подчёркнутая браузером опечатка — единственный шанс заметить её до выгрузки.
+// Язык объявлен на самом поле, а не унаследован от документа: словарь браузер
+// выбирает по ближайшему lang, и вставка статьи на другом языке выше по дереву
+// не должна уводить проверку замечаний на чужой словарь. Текст статьи и имя
+// файла этим не покрыты намеренно — их не пишут, а получают готовыми.
+const NOTE_FIELD = ' spellcheck="true" lang="ru"';
+
 function draftCard(entry) {
   const anchored = entry.kind === "anchored";
   // Привязанное замечание осмысленно и без слов: тип и процитированные строки
@@ -349,8 +357,8 @@ function draftCard(entry) {
     </header>
     ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(entry.type)}</div>` : ""}
     <label class="draft-label" for="draft-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
-    <textarea id="draft-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}>${escapeHtml(entry.comment)}</textarea>
-    ${anchored ? `<label class="draft-label" for="draft-replacement">Заменить на</label><textarea id="draft-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(entry.replacement)}</textarea>` : ""}
+    <textarea id="draft-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}${NOTE_FIELD}>${escapeHtml(entry.comment)}</textarea>
+    ${anchored ? `<label class="draft-label" for="draft-replacement">Заменить на</label><textarea id="draft-replacement" class="input draft-textarea replacement-input" rows="3"${NOTE_FIELD}>${escapeHtml(entry.replacement)}</textarea>` : ""}
     <div class="draft-actions">
       <button class="btn btn-primary compact-btn" type="button" data-action="commit-draft"${ready ? "" : " disabled"}>Добавить</button>
       <button class="btn btn-ghost compact-btn" type="button" data-action="cancel-draft">Отмена</button>
@@ -373,8 +381,8 @@ function editCard(entry) {
     </header>
     ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(edit.type, "edit-type")}</div>` : ""}
     <label class="draft-label" for="edit-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
-    <textarea id="edit-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}>${escapeHtml(edit.comment)}</textarea>
-    ${anchored ? `<label class="draft-label" for="edit-replacement">Заменить на</label><textarea id="edit-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(edit.replacement)}</textarea>` : ""}
+    <textarea id="edit-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}${NOTE_FIELD}>${escapeHtml(edit.comment)}</textarea>
+    ${anchored ? `<label class="draft-label" for="edit-replacement">Заменить на</label><textarea id="edit-replacement" class="input draft-textarea replacement-input" rows="3"${NOTE_FIELD}>${escapeHtml(edit.replacement)}</textarea>` : ""}
     <div class="draft-actions draft-hint">
       <span>Сохраняется само</span>
       <span>Esc или ⌘/Ctrl+Enter — закончить</span>
