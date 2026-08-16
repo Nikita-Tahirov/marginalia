@@ -718,6 +718,37 @@ body[data-resizing] {
   font-size: 10px;
 }
 
+/* Правка стоит рядом с удалением, но тише его: рецензию чаще перечитывают и
+   уточняют, чем выбрасывают, и промах мимо кнопки не должен стирать запись. */
+.card-edit {
+  width: 23px;
+  height: 23px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-neutral-500);
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.card-edit .mi {
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.card-edit:hover,
+.card-edit:focus-visible {
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+}
+
+/* Соседняя кнопка уже отжала заголовок вправо — второй раз этого не нужно. */
+.card-edit + .card-delete {
+  margin-left: 0;
+}
+
 .card-delete {
   width: 23px;
   height: 23px;

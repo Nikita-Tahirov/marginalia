@@ -93,6 +93,10 @@ const state = {
   activeDocumentId: null,
   selectedTypes: new Set(REVIEW_TYPES),
   draft: null,
+  // Открытая правка уже добавленной записи: копия её изменяемых полей. Правим
+  // копию, а не саму запись, чтобы «Отмена» возвращала прежний текст, а не то,
+  // что человек успел набрать и передумал.
+  edit: null,
   pendingSelection: null,
   activeEntryId: null,
   searchResults: [],
@@ -233,6 +237,7 @@ function anchoredCard(entry) {
     <header class="card-header">
       <span class="type-badge">${escapeHtml(entry.type)}</span>
       <button class="line-link" type="button" data-action="activate" data-entry-id="${id}">${escapeHtml(lineHeading(entry).toLowerCase())}</button>
+      <button class="card-edit" type="button" data-action="edit" data-entry-id="${id}" aria-label="Изменить замечание"><span class="mi" aria-hidden="true">edit</span></button>
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить замечание">×</button>
     </header>
     <blockquote>${renderMultiline(entry.quote)}</blockquote>
@@ -250,6 +255,7 @@ function freeCard(entry) {
     <header class="card-header">
       <span class="general-badge">Общее замечание</span>
       <span class="free-position">без строки</span>
+      <button class="card-edit" type="button" data-action="edit" data-entry-id="${id}" aria-label="Изменить общее замечание"><span class="mi" aria-hidden="true">edit</span></button>
       <button class="card-delete" type="button" data-action="delete" data-entry-id="${id}" aria-label="Удалить общее замечание">×</button>
     </header>
     <p class="card-comment">${renderMultiline(entry.comment)}</p>
@@ -259,12 +265,12 @@ function freeCard(entry) {
   </article>`;
 }
 
-function typeChoices(activeType) {
+function typeChoices(activeType, action = "draft-type") {
   return REVIEW_TYPES.map(
     (type) => `<button
       class="draft-type ${typeClass(type)}${type === activeType ? " is-active" : ""}"
       type="button"
-      data-action="draft-type"
+      data-action="${action}"
       data-type="${type}"
       aria-pressed="${type === activeType}"
     >${type}</button>`,
@@ -294,7 +300,32 @@ function draftCard(entry) {
   </article>`;
 }
 
-function renderReview({ focusDraft = false } = {}) {
+// Форма правки повторяет форму черновика: человек уже знает, где что лежит, и
+// второе устройство тех же полей было бы лишним знанием. Цитата и строки в неё
+// не входят — они якорь записи, а не её содержание; чтобы указать на другое
+// место, его выделяют заново.
+function editCard(entry) {
+  const edit = state.edit;
+  const anchored = entry.kind === "anchored";
+  const ready = anchored || Boolean(edit.comment.trim());
+  return `<article class="review-card draft-card edit-card" data-entry-id="${escapeHtml(entry.id)}">
+    <header class="draft-heading">
+      <span>Правка ${anchored ? "замечания" : "общего замечания"}</span>
+      <span>${anchored ? escapeHtml(lineHeading(entry).toLowerCase()) : "без строки"}</span>
+    </header>
+    ${anchored ? `<blockquote>${renderMultiline(entry.quote)}</blockquote><div class="draft-types" role="group" aria-label="Тип замечания">${typeChoices(edit.type, "edit-type")}</div>` : ""}
+    <label class="draft-label" for="edit-comment">${anchored ? "Комментарий" : `Текст общего замечания <span aria-hidden="true">*</span>`}</label>
+    <textarea id="edit-comment" class="input draft-textarea" rows="4"${anchored ? "" : " required"}>${escapeHtml(edit.comment)}</textarea>
+    ${anchored ? `<label class="draft-label" for="edit-replacement">Заменить на</label><textarea id="edit-replacement" class="input draft-textarea replacement-input" rows="3">${escapeHtml(edit.replacement)}</textarea>` : ""}
+    <div class="draft-actions">
+      <button class="btn btn-primary compact-btn" type="button" data-action="commit-edit"${ready ? "" : " disabled"}>Сохранить</button>
+      <button class="btn btn-ghost compact-btn" type="button" data-action="cancel-edit">Отмена</button>
+      <span>⌘/Ctrl+Enter</span>
+    </div>
+  </article>`;
+}
+
+function renderReview({ focus = null } = {}) {
   const doc = activeDocument();
   if (!doc) {
     elements.reviewList.innerHTML = `<div class="empty-review"><p>Здесь появится рецензия.</p><span>Откройте Markdown-документ.</span></div>`;
@@ -311,13 +342,14 @@ function renderReview({ focusDraft = false } = {}) {
   elements.reviewList.innerHTML = entries
     .map((entry) => {
       if (entry.status === "draft") return draftCard(entry);
+      if (entry.id === state.edit?.id) return editCard(entry);
       return entry.kind === "anchored" ? anchoredCard(entry) : freeCard(entry);
     })
     .join("");
 
-  if (focusDraft) {
+  if (focus) {
     requestAnimationFrame(() => {
-      const field = elements.reviewList.querySelector("#draft-comment");
+      const field = elements.reviewList.querySelector(focus);
       field?.focus();
       field?.scrollIntoView({ block: "nearest" });
     });
@@ -642,6 +674,7 @@ function activateDocument(id) {
   if (!state.documents.some((doc) => doc.id === id)) return;
   state.activeDocumentId = id;
   state.draft = null;
+  state.edit = null;
   state.pendingSelection = null;
   state.activeEntryId = null;
   state.selectedTypes = new Set(REVIEW_TYPES);
@@ -941,6 +974,7 @@ async function importReview(file) {
   doc.sequence = Math.max(doc.sequence, maxSequence);
   await persistReview(doc);
   state.activeEntryId = null;
+  state.edit = null;
   refreshReviewState();
   applyImportNotice(foreign ? parsed.document : null);
   showToast(
@@ -1076,7 +1110,7 @@ function createAnchoredDraft(type) {
   window.getSelection()?.removeAllRanges();
   state.pendingSelection = null;
   hideQuoteToolbar();
-  refreshReviewState({ focusDraft: true });
+  refreshReviewState({ focus: "#draft-comment" });
 }
 
 function createFreeDraft(afterEntry = null) {
@@ -1100,7 +1134,7 @@ function createFreeDraft(afterEntry = null) {
     freeOrder: nextFreeOrder(doc.entries, boundaryKey, anchorEntry),
     sequence: nextSequence(doc),
   };
-  refreshReviewState({ focusDraft: true });
+  refreshReviewState({ focus: "#draft-comment" });
 }
 
 function syncDraftFields() {
@@ -1137,6 +1171,69 @@ function cancelDraft() {
   refreshReviewState();
 }
 
+// Замечание пишут по ходу чтения и нередко потом перечитывают: формулировка
+// оказывается резкой, тип — неточным, замена — с опечаткой. Раньше оставалось
+// удалить запись и написать её заново, потеряв и место в рецензии, и цитату.
+function startEdit(id) {
+  const entry = activeDocument()?.entries.find((item) => item.id === id);
+  if (!entry) return;
+  if (state.draft) {
+    showToast("Сначала добавьте или отмените текущий черновик.", "error");
+    elements.reviewList.querySelector("#draft-comment")?.focus();
+    return;
+  }
+  state.edit = {
+    id: entry.id,
+    type: entry.type ?? REVIEW_TYPES[0],
+    comment: entry.comment ?? "",
+    replacement: entry.replacement ?? "",
+  };
+  if (entry.kind === "anchored") state.activeEntryId = entry.id;
+  refreshReviewState({ focus: "#edit-comment" });
+}
+
+function syncEditFields() {
+  if (!state.edit) return;
+  const comment = elements.reviewList.querySelector("#edit-comment");
+  const replacement = elements.reviewList.querySelector("#edit-replacement");
+  if (comment) state.edit.comment = comment.value;
+  if (replacement) state.edit.replacement = replacement.value;
+}
+
+function commitEdit() {
+  const doc = activeDocument();
+  if (!doc || !state.edit) return;
+  syncEditFields();
+  const entry = doc.entries.find((item) => item.id === state.edit.id);
+  if (!entry) {
+    state.edit = null;
+    refreshReviewState();
+    return;
+  }
+
+  const comment = state.edit.comment.trim();
+  // Общее замечание состоит из одного текста: опустошив его, человек стёр бы
+  // саму запись, не нажав «Удалить». Кнопка в этот момент и так неактивна.
+  if (entry.kind === "free" && !comment) return;
+
+  entry.comment = comment;
+  if (entry.kind === "anchored") {
+    if (REVIEW_TYPES.includes(state.edit.type)) entry.type = state.edit.type;
+    entry.replacement = state.edit.replacement.trim();
+  }
+  state.edit = null;
+  refreshReviewState();
+  persistReview(doc, {
+    saved: "Замечание сохранено.",
+    failed: "Замечание изменено, но не сохранено.",
+  });
+}
+
+function cancelEdit() {
+  state.edit = null;
+  refreshReviewState();
+}
+
 function deleteEntry(id) {
   const doc = activeDocument();
   if (!doc) return;
@@ -1144,6 +1241,7 @@ function deleteEntry(id) {
   if (index < 0) return;
   doc.entries.splice(index, 1);
   if (state.activeEntryId === id) state.activeEntryId = null;
+  if (state.edit?.id === id) state.edit = null;
   refreshReviewState();
   persistReview(doc, {
     saved: "Запись удалена.",
@@ -1401,6 +1499,20 @@ elements.filterList.addEventListener("click", (event) => {
 });
 
 elements.reviewList.addEventListener("input", (event) => {
+  if (state.edit) {
+    if (event.target.id === "edit-comment") {
+      state.edit.comment = event.target.value;
+      // Карточку целиком не перерисовываем: под руками у человека пропали бы
+      // фокус и место курсора. Меняем только доступность кнопки.
+      const entry = activeDocument()?.entries.find((item) => item.id === state.edit.id);
+      if (entry?.kind === "free") {
+        const commit = elements.reviewList.querySelector('[data-action="commit-edit"]');
+        if (commit) commit.disabled = !event.target.value.trim();
+      }
+    }
+    if (event.target.id === "edit-replacement") state.edit.replacement = event.target.value;
+    return;
+  }
   if (!state.draft) return;
   if (event.target.id === "draft-comment") {
     state.draft.comment = event.target.value;
@@ -1415,9 +1527,10 @@ elements.reviewList.addEventListener("input", (event) => {
 });
 
 elements.reviewList.addEventListener("keydown", (event) => {
-  if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && state.draft) {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && (state.draft || state.edit)) {
     event.preventDefault();
-    commitDraft();
+    if (state.draft) commitDraft();
+    else commitEdit();
     return;
   }
   const card = event.target.closest(".review-card[data-entry-id]");
@@ -1431,11 +1544,13 @@ elements.reviewList.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]");
   if (!action) {
     const card = event.target.closest(".review-card[data-entry-id]");
-    if (card) activateEntry(card.dataset.entryId);
+    // Открытую форму правки клик не переоткрывает: человек в ней печатает.
+    if (card && card.dataset.entryId !== state.edit?.id) activateEntry(card.dataset.entryId);
     return;
   }
   const id = action.dataset.entryId;
   if (action.dataset.action === "activate") activateEntry(id);
+  if (action.dataset.action === "edit") startEdit(id);
   if (action.dataset.action === "delete") deleteEntry(id);
   if (action.dataset.action === "add-general-after") {
     const entry = activeDocument()?.entries.find((item) => item.id === id);
@@ -1443,10 +1558,17 @@ elements.reviewList.addEventListener("click", (event) => {
   }
   if (action.dataset.action === "commit-draft") commitDraft();
   if (action.dataset.action === "cancel-draft") cancelDraft();
+  if (action.dataset.action === "commit-edit") commitEdit();
+  if (action.dataset.action === "cancel-edit") cancelEdit();
   if (action.dataset.action === "draft-type" && state.draft?.kind === "anchored") {
     syncDraftFields();
     state.draft.type = action.dataset.type;
-    renderReview({ focusDraft: true });
+    renderReview({ focus: "#draft-comment" });
+  }
+  if (action.dataset.action === "edit-type" && state.edit) {
+    syncEditFields();
+    state.edit.type = action.dataset.type;
+    renderReview({ focus: "#edit-comment" });
   }
 });
 

@@ -56,6 +56,24 @@ async function highlightedFragments(page, name) {
   );
 }
 
+// Читаем не экран, а само хранилище: сообщение о записи живёт четыре секунды и
+// от прошлого действия неотличимо, а перезагрузка сразу за ним обгоняла бы
+// незавершённую запись и краснела по своей же причине.
+async function storedComments(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const request = indexedDB.open("marginalia", 1);
+        request.onsuccess = () => {
+          const rows = request.result.transaction("reviews", "readonly").objectStore("reviews").getAll();
+          rows.onsuccess = () =>
+            resolve(rows.result.flatMap((row) => row.entries.map((entry) => entry.comment)));
+        };
+        request.onerror = () => resolve([]);
+      }),
+  );
+}
+
 async function commitDraft(page, comment, replacement = "") {
   await page.locator("#draft-comment").fill(comment);
   if (replacement) await page.locator("#draft-replacement").fill(replacement);
@@ -165,6 +183,68 @@ test("save writes through the file picker and does nothing when the picker is ca
     .toBe(2);
   expect(await page.evaluate(() => window.__picker.written.length)).toBe(1);
   expect(downloads).toHaveLength(0);
+});
+
+// Замечание пишут по ходу чтения и перечитывают потом: формулировка выходит
+// резкой, тип неточным, замена с опечаткой. Раньше запись оставалось только
+// удалить и написать заново, потеряв и цитату, и место в рецензии.
+test("edits an added note in place and keeps the edit after a reload", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+  await quoteWholeLine(page, 3, "Правка");
+  await commitDraft(page, "Первая формулировка.", "Первая замена.");
+  await expect(page.locator(".review-card .type-badge")).toHaveText("Правка");
+
+  await page.locator('.review-card [data-action="edit"]').click();
+  // Цитата и строка — якорь записи, а не её содержание: их форма правки не даёт.
+  await expect(page.locator(".edit-card blockquote")).toContainText("Первая строка с целью.");
+  await expect(page.locator(".edit-card")).toContainText("строка 3");
+  await expect(page.locator("#edit-comment")).toHaveValue("Первая формулировка.");
+  await expect(page.locator("#edit-replacement")).toHaveValue("Первая замена.");
+
+  // Передумал: «Отмена» возвращает прежний текст, а не набранный черновик.
+  await page.locator("#edit-comment").fill("Случайный набор.");
+  await page.locator('[data-action="cancel-edit"]').click();
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Первая формулировка.");
+
+  await page.locator('.review-card [data-action="edit"]').click();
+  await page.locator("#edit-comment").fill("Уточнённая формулировка.");
+  await page.locator("#edit-replacement").fill("Уточнённая замена.");
+  await page.locator('.edit-card [data-action="edit-type"][data-type="Вопрос"]').click();
+  await expect(page.locator("#edit-comment")).toHaveValue("Уточнённая формулировка.");
+  await page.locator('[data-action="commit-edit"]').click();
+
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Уточнённая формулировка.");
+  await expect(page.locator(".review-card .replacement p")).toHaveText("Уточнённая замена.");
+  await expect(page.locator(".review-card .type-badge")).toHaveText("Вопрос");
+  await expect(page.locator(".review-card .line-link")).toHaveText("строка 3");
+  await expect(page.locator("#toast")).toHaveText("Замечание сохранено.");
+
+  // Правка живёт в хранилище, а не только на экране.
+  await expect.poll(() => storedComments(page)).toEqual(["Уточнённая формулировка."]);
+  await page.reload();
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Уточнённая формулировка.");
+  await expect(page.locator(".review-card .type-badge")).toHaveText("Вопрос");
+  await expect(page.locator(".review-card .replacement p")).toHaveText("Уточнённая замена.");
+
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText("### Строка 3 · Вопрос");
+  await expect(page.locator("#preview-content")).toContainText("Уточнённая формулировка.");
+  await page.locator("#close-preview").click();
+
+  // Общее замечание состоит из одного текста: опустевшим его не сохранить.
+  await page.locator("#add-general").click();
+  await commitDraft(page, "Общий вывод.");
+  await page.locator('.free-card [data-action="edit"]').click();
+  const commitEdit = page.locator('[data-action="commit-edit"]');
+  await page.locator("#edit-comment").fill("   ");
+  await expect(commitEdit).toBeDisabled();
+  await page.locator("#edit-comment").fill("Общий вывод, переписанный набело.");
+  await expect(commitEdit).toBeEnabled();
+  await page.locator("#edit-comment").press("Control+Enter");
+  await expect(page.locator(".free-card .card-comment")).toHaveText(
+    "Общий вывод, переписанный набело.",
+  );
 });
 
 test("multiple free notes keep their visible place after anchored additions and deletion", async ({ page }) => {
