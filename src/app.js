@@ -2069,6 +2069,26 @@ document.addEventListener("drop", (event) => {
   }
   openDroppedFiles(files).catch(() => showToast("Файл открыть не удалось.", "error"));
 });
+
+// Файл, открытый из Finder «через приложение», приходит не событием, а очередью
+// запуска, и приходит однажды — при старте окна. Потребителя ставим сразу:
+// поставленный позже не получит уже случившийся запуск. Право на файл здесь
+// тоже даёт сама операция открытия, поэтому этот путь работает в папках,
+// закрытых для системной панели выбора.
+if ("launchQueue" in window) {
+  window.launchQueue.setConsumer(async (params) => {
+    const handles = params?.files ?? [];
+    const files = [];
+    for (const handle of handles) {
+      try {
+        files.push(await handle.getFile());
+      } catch (error) {
+        showToast(`Не удалось открыть файл: ${readFailureReason(error)}.`, "error");
+      }
+    }
+    if (files.length) await openDroppedFiles(files);
+  });
+}
 elements.pasteText.addEventListener("click", pasteFromClipboard);
 elements.submitPaste.addEventListener("click", () => {
   const text = elements.pasteInput.value;

@@ -28,6 +28,17 @@ export default defineConfig({
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
           { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
+        // Установленному приложению система закрывает «Загрузки», «Рабочий стол»
+        // и «Документы»: файл, выбранный в её же панели, оно прочитать не может.
+        // Открытие «через приложение» из Finder идёт другим путём — право на
+        // файл выдаёт сама операция открытия, — поэтому статью и рецензию можно
+        // отдать приложению оттуда, где они лежат.
+        file_handlers: [
+          {
+            action: "/",
+            accept: { "text/markdown": [".md", ".markdown"] },
+          },
+        ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,woff2,svg,png}"],

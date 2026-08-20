@@ -1618,6 +1618,36 @@ test("opens a dragged article and a dragged review with no file picker involved"
   await expect(page.locator("#document-notes")).toContainText("1");
 });
 
+// Открытие «через приложение» из Finder — второй путь мимо системной панели:
+// файл приходит очередью запуска, и приходит один раз при старте окна. Поэтому
+// проверяем не только разбор, но и то, что потребитель поставлен сразу: если он
+// появится позже, уже случившийся запуск пройдёт мимо и окно останется пустым.
+test("opens a file the system hands over when the app is launched with it", async ({ page }) => {
+  // launchQueue у окна — свойство только для чтения: обычное присваивание
+  // браузер молча проглотит, и подставится настоящая очередь, которая ничего не
+  // отдаст. Поэтому подменяем через defineProperty.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "launchQueue", {
+      configurable: true,
+      value: {
+        setConsumer: (consumer) => {
+          window.__launchConsumer = consumer;
+        },
+      },
+    });
+  });
+  await page.goto("/");
+
+  await expect(await page.evaluate(() => typeof window.__launchConsumer)).toBe("function");
+  await page.evaluate(async (text) => {
+    const file = new File([text], "из-загрузок.md", { type: "text/markdown" });
+    await window.__launchConsumer({ files: [{ getFile: async () => file }] });
+  }, article);
+
+  await expect(page.locator("#document-select")).toContainText("из-загрузок.md");
+  await expect(page.locator("#document-lines")).toContainText("9");
+});
+
 test("says what it accepts when the dragged file is not markdown", async ({ page }) => {
   await page.goto("/");
   await loadMarkdown(page);
