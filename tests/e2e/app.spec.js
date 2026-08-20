@@ -1492,3 +1492,51 @@ test("still opens a review exported by an earlier version", async ({ page }) => 
   await expect(page.locator(".review-card .card-comment")).toHaveText("Замечание для выгрузки.");
   await expect(page.locator(".review-card .line-link")).toHaveText("строка 3");
 });
+
+// Открытие рецензии — единственное место, где приложение берёт чужой файл и
+// сразу пишет его в хранилище: отказать может и чтение файла, и запись. Пока
+// отказ терялся, человек видел ровно бездействие — кнопка нажата, файл выбран,
+// на экране ничего. Проверяем не причину отказа, а то, что о нём говорят.
+test("says why a review file could not be opened instead of doing nothing", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  // Файл, выбранный в диалоге, к моменту чтения может быть уже недоступен:
+  // перемещён, удалён, не выгружен из облака. Браузер отвечает отказом чтения.
+  await page.evaluate(() => {
+    File.prototype.text = () => Promise.reject(new DOMException("нет доступа", "NotReadableError"));
+  });
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание.\n"),
+  });
+  await expect(page.locator("#toast")).toContainText("прочитать");
+  await expect(page.locator(".review-card")).toHaveCount(0);
+});
+
+test("keeps an opened review on screen when the browser refuses to store it", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  // Запись в IndexedDB отказывает не только событием ошибки: put бросает прямо
+  // в момент вызова — при неактивной транзакции, закрытом соединении, отказе
+  // клонировать значение. Такой отказ не должен уносить с собой всю рецензию:
+  // разобранные замечания уже есть, и человеку важнее увидеть их, чем потерять.
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value, key) {
+      if (this.name === "reviews") throw new DOMException("нет места", "DataCloneError");
+      return put.call(this, value, key);
+    };
+  });
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание.\n"),
+  });
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Замечание.");
+  await expect(page.locator("#save-state")).toBeVisible();
+  await expect(page.locator("#toast")).toContainText("не сохранена");
+});

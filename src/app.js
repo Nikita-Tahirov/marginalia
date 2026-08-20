@@ -840,8 +840,10 @@ function showSaveState(state) {
 
 // Действие и его запись для человека — одно событие, поэтому и сообщение одно:
 // «Замечание сохранено», а не «добавлено» отдельно от «сохранено».
+// Возвращает, легла ли работа в хранилище: вызывающей стороне бывает нужно
+// сказать об исходе своими словами, а не сообщением, которое тут же затрут.
 async function persistReview(doc, notice = null) {
-  if (!doc) return;
+  if (!doc) return false;
   const written = await storeReview(doc.id, doc.entries, doc.sequence);
   const saved = written !== null;
   showSaveState(saved ? "saved" : "failed");
@@ -861,6 +863,8 @@ async function persistReview(doc, notice = null) {
     if (!state.persistent) rememberPersistDecline();
     showStorageNotice();
   }
+
+  return saved;
 }
 
 // Человек должен знать, где лежит его работа, — но узнавать это не постфактум
@@ -1061,7 +1065,18 @@ async function importReview(file) {
   const doc = activeDocument();
   elements.reviewInput.value = "";
   if (!doc || !file) return;
-  const text = await file.text();
+
+  // Между выбором в диалоге и чтением файл успевает стать недоступным: его
+  // перемещают, удаляют, не выгружают из облака. Браузер отвечает отказом
+  // чтения, и без этой ветки отказ выглядел так же, как бездействие кнопки.
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    showToast("Файл не удалось прочитать: проверьте, на месте ли он.", "error");
+    return;
+  }
+
   const parsed = parseReview(text);
   if (!parsed.entries.length) {
     showToast("В файле нет замечаний, которые удалось бы разобрать.", "error");
@@ -1076,16 +1091,23 @@ async function importReview(file) {
     status: "committed",
   }));
   doc.sequence = Math.max(doc.sequence, maxSequence);
-  await persistReview(doc);
+  // Отказ записи не отменяет открытие: замечания уже разобраны и человеку
+  // нужнее на экране, чем в хранилище. Но молчать о нём нельзя — рецензия,
+  // которую не записали, исчезнет при следующем открытии приложения.
+  const saved = await persistReview(doc);
   state.activeEntryId = null;
   state.edit = null;
   refreshReviewState();
   applyImportNotice(foreign ? parsed.document : null);
+  // Сообщение одно, поэтому говорит о худшем из случившегося: о смещении строк
+  // напоминает и заметка над списком, а о потерянной записи — больше ничто.
   showToast(
-    foreign
-      ? "Рецензия открыта, но написана к другой версии статьи."
-      : `Загружено ${pluralizeReview(doc.entries.length)}.`,
-    foreign ? "error" : "info",
+    !saved
+      ? "Рецензия открыта, но не сохранена."
+      : foreign
+        ? "Рецензия открыта, но написана к другой версии статьи."
+        : `Загружено ${pluralizeReview(doc.entries.length)}.`,
+    saved && !foreign ? "info" : "error",
   );
 }
 
@@ -1640,7 +1662,15 @@ elements.previewDialog.addEventListener("click", (event) => {
 });
 elements.addGeneral.addEventListener("click", () => createFreeDraft());
 elements.openReview.addEventListener("click", () => elements.reviewInput.click());
-elements.reviewInput.addEventListener("change", () => importReview(elements.reviewInput.files[0]));
+// Открытие рецензии — единственный путь, где приложение принимает чужой файл и
+// тут же пишет его в хранилище, поэтому отказать здесь может многое. Обещание
+// без этого перехвата отклонялось в пустоту: нажатая кнопка, выбранный файл и
+// ничего на экране — состояние, из которого человеку нечего понять.
+elements.reviewInput.addEventListener("change", () => {
+  importReview(elements.reviewInput.files[0]).catch(() => {
+    showToast("Рецензию открыть не удалось.", "error");
+  });
+});
 elements.addVersion.addEventListener("click", () => {
   const doc = activeDocument();
   if (!doc) return;

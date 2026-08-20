@@ -64,11 +64,22 @@ function run(storeNames, mode, action) {
         transaction.oncomplete = () => resolve(outcome ?? null);
         transaction.onerror = () => resolve(null);
         transaction.onabort = () => resolve(null);
-        const request = action(
-          Array.isArray(storeNames)
-            ? storeNames.map((name) => transaction.objectStore(name))
-            : transaction.objectStore(storeNames),
-        );
+        // Отказ приходит не только событием: put и get бросают прямо в момент
+        // вызова — когда транзакция уже неактивна, соединение закрыто или
+        // значение отказались клонировать. Без этого перехвата такой отказ
+        // становился отклонённым обещанием, а вызывающая сторона ждёт здесь
+        // null: отказ терялся вместе со всей работой, которую нёс вызов.
+        let request;
+        try {
+          request = action(
+            Array.isArray(storeNames)
+              ? storeNames.map((name) => transaction.objectStore(name))
+              : transaction.objectStore(storeNames),
+          );
+        } catch {
+          resolve(null);
+          return;
+        }
         if (request) request.onsuccess = () => (outcome = request.result);
       }),
   );
