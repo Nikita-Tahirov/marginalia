@@ -1502,9 +1502,16 @@ test("says why a review file could not be opened instead of doing nothing", asyn
   await loadMarkdown(page);
 
   // Файл, выбранный в диалоге, к моменту чтения может быть уже недоступен:
-  // перемещён, удалён, не выгружен из облака. Браузер отвечает отказом чтения.
+  // перемещён, удалён, не выгружен из облака. Браузер отвечает отказом чтения —
+  // обоими путями сразу, иначе сработает запасной и говорить будет не о чем.
   await page.evaluate(() => {
     File.prototype.text = () => Promise.reject(new DOMException("нет доступа", "NotReadableError"));
+    FileReader.prototype.readAsText = function () {
+      queueMicrotask(() => {
+        this.error = new DOMException("нет доступа", "NotReadableError");
+        this.onerror?.(new Event("error"));
+      });
+    };
   });
   await page.locator("#review-input").setInputFiles({
     name: "article.review.md",
@@ -1539,6 +1546,55 @@ test("keeps an opened review on screen when the browser refuses to store it", as
   await expect(page.locator(".review-card .card-comment")).toHaveText("Замечание.");
   await expect(page.locator("#save-state")).toBeVisible();
   await expect(page.locator("#toast")).toContainText("не сохранена");
+});
+
+// Присланная рецензия не открывалась ничем, и причина оказалась не в файле:
+// поле выбора очищалось до чтения, а очистка отзывает у браузера право на
+// выбранный файл. В обычной вкладке это сходит с рук, в приложении,
+// установленном на рабочий стол, чтение после неё возвращает отказ. Здесь то же
+// правило записано явно: файл, отозванный вместе с полем, не читается ничем.
+test("reads the chosen review before clearing the picker that holds it", async ({ page }) => {
+  await page.addInitScript(() => {
+    const revoked = new WeakSet();
+    const value = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+    Object.defineProperty(HTMLInputElement.prototype, "value", {
+      ...value,
+      set(next) {
+        if (this.type === "file" && next === "") {
+          for (const file of this.files ?? []) revoked.add(file);
+        }
+        value.set.call(this, next);
+      },
+    });
+
+    const deny = () => new DOMException("файл больше не доступен", "NotReadableError");
+    const text = File.prototype.text;
+    File.prototype.text = function () {
+      return revoked.has(this) ? Promise.reject(deny()) : text.call(this);
+    };
+    const readAsText = FileReader.prototype.readAsText;
+    FileReader.prototype.readAsText = function (blob) {
+      if (!revoked.has(blob)) return readAsText.call(this, blob);
+      queueMicrotask(() => {
+        this.error = deny();
+        this.onerror?.(new Event("error"));
+      });
+    };
+  });
+
+  await page.goto("/");
+  await loadMarkdown(page);
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание из файла.\n"),
+  });
+
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Замечание из файла.");
+  // Поле всё равно опустошено: иначе повторный выбор того же файла не считался
+  // бы изменением, и открыть его второй раз стало бы нечем.
+  expect(await page.locator("#review-input").inputValue()).toBe("");
 });
 
 // Кегль статьи выбирает читатель: вычитка идёт часами и на чужом экране.

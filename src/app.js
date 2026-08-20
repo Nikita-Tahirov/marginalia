@@ -1341,21 +1341,62 @@ async function removeActiveDocument() {
   showToast(`Документ «${doc.name}» удалён.`);
 }
 
+// Blob.text() и FileReader идут к файлу разными путями, и отказывают они
+// порознь: в приложении, установленном на рабочий стол, первый уже возвращал
+// отказ там, где второй читал файл до конца. Поэтому «не читается» говорим
+// только после обеих попыток, а не после первой.
+function readFileText(file) {
+  return file.text().catch(
+    (error) =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(reader.error ?? error);
+        try {
+          reader.readAsText(file);
+        } catch {
+          reject(error);
+        }
+      }),
+  );
+}
+
+// Причина отказа приходит от браузера машинным именем — NotReadableError,
+// NotFoundError, SecurityError. Человеку оно ничего не говорит само по себе, но
+// именно оно отличает «файл унесли» от «доступ к папке закрыт», и без него
+// разбираться приходится вслепую.
+function readFailureReason(error) {
+  const name = typeof error?.name === "string" ? error.name : "";
+  if (name === "NotFoundError") return "файла нет на прежнем месте";
+  if (name === "NotReadableError") return "браузер не получил доступ к файлу";
+  if (name === "SecurityError") return "браузер закрыл доступ к файлу";
+  return name || "браузер не объяснил причину";
+}
+
 async function importReview(file) {
   const doc = activeDocument();
-  elements.reviewInput.value = "";
-  if (!doc || !file) return;
-
-  // Между выбором в диалоге и чтением файл успевает стать недоступным: его
-  // перемещают, удаляют, не выгружают из облака. Браузер отвечает отказом
-  // чтения, и без этой ветки отказ выглядел так же, как бездействие кнопки.
-  let text;
-  try {
-    text = await file.text();
-  } catch {
-    showToast("Файл не удалось прочитать: проверьте, на месте ли он.", "error");
+  if (!doc || !file) {
+    elements.reviewInput.value = "";
     return;
   }
+
+  // Читаем файл прежде, чем очистить поле. Очистка отзывает у браузера право на
+  // выбранный файл, и в приложении, установленном на рабочий стол, чтение после
+  // неё возвращает отказ — тот самый, из-за которого присланная рецензия не
+  // открывалась ничем. Поле нужно опустошить, чтобы следующий выбор того же
+  // файла снова считался изменением, но это дело последней строки, а не первой.
+  let text;
+  try {
+    text = await readFileText(file);
+  } catch (error) {
+    elements.reviewInput.value = "";
+    showToast(
+      `Файл не удалось прочитать: ${readFailureReason(error)}. Попробуйте ещё раз или откройте файл из другой папки.`,
+      "error",
+    );
+    return;
+  }
+  elements.reviewInput.value = "";
 
   const parsed = parseReview(text);
   if (!parsed.entries.length) {
