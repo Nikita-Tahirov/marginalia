@@ -1516,6 +1516,82 @@ body[data-resizing] {
   background: var(--quote-tint);
 }
 
+/* Границы выделенного замечания. Подсветка цитаты нарисована ::highlight и
+   узлов не имеет — взяться за её край нечем, поэтому края обозначены
+   отдельными метками поверх текста. Ставит их JavaScript по координатам
+   диапазона, здесь только вид. */
+.range-handles[hidden] {
+  display: none;
+}
+
+/* Пока границу тянут, метки не ловят попаданий: метка едет ровно под курсором,
+   и место в тексте, определяемое по точке, вернуло бы саму кнопку вместо буквы.
+   События протяжки идут в это время через документ, а не через метку. */
+.range-handles[data-dragging] .range-handle {
+  pointer-events: none;
+}
+
+body[data-anchoring] {
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.range-handle {
+  position: absolute;
+  z-index: 14;
+  width: 13px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  /* Иначе браузер примет протяжку по метке за прокрутку и уведёт страницу. */
+  touch-action: none;
+  transform: translateX(-50%);
+}
+
+.range-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-accent-700);
+  transform: translateX(-50%);
+}
+
+/* Хват вынесен за край строки: на самой черте он лёг бы на первую букву цитаты
+   и закрыл бы то, ради чего его и двигают. */
+.range-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-accent-700);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(-50%);
+}
+
+.range-handle[data-edge="start"]::after {
+  top: -7px;
+}
+
+.range-handle[data-edge="end"]::after {
+  bottom: -7px;
+}
+
+.range-handle:hover::before,
+.range-handle:hover::after,
+.range-handle:focus-visible::before,
+.range-handle:focus-visible::after,
+.range-handles[data-dragging] .range-handle::before,
+.range-handles[data-dragging] .range-handle::after {
+  background: var(--color-accent-900);
+}
+
 .toast {
   position: fixed;
   right: var(--space-4);

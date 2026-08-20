@@ -278,6 +278,30 @@
             <button type="button" class="type-удалить" data-quote-type="Удалить">Удалить</button>
             <button type="button" class="type-переписать" data-quote-type="Переписать">Переписать</button>
           </div>
+          <!-- Границы выделенного замечания. Подсветка цитаты нарисована
+               ::highlight — у неё нет ни узлов, ни краёв, за которые можно
+               взяться, поэтому метки живут отдельными кнопками и ставятся по
+               координатам диапазона. -->
+          <div id="range-handles" class="range-handles" hidden>
+            <!-- Подсказки здесь нет намеренно: [data-tooltip] задаёт элементу
+                 position: relative и объявлен в стилях ниже — при равной
+                 специфичности он молча отменил бы абсолютное положение метки, и
+                 та ушла бы под конец документа. -->
+            <button
+              type="button"
+              class="range-handle"
+              data-edge="start"
+              title="Начало замечания: тяните мышью или стрелками"
+              aria-label="Передвинуть начало замечания: тяните мышью или стрелками"
+            ></button>
+            <button
+              type="button"
+              class="range-handle"
+              data-edge="end"
+              title="Конец замечания: тяните мышью или стрелками"
+              aria-label="Передвинуть конец замечания: тяните мышью или стрелками"
+            ></button>
+          </div>
         </section>
 
         <div

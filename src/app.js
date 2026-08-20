@@ -2,6 +2,7 @@ import {
   REVIEW_TYPES,
   anchoredSortKey,
   boundaryAfter,
+  compareKeys,
   countByType,
   lineHeading,
   nextFreeOrder,
@@ -72,6 +73,7 @@ const elements = {
   documentEmpty: document.querySelector("#document-empty"),
   documentBody: document.querySelector("#document-body"),
   quoteToolbar: document.querySelector("#quote-toolbar"),
+  rangeHandles: document.querySelector("#range-handles"),
   toast: document.querySelector("#toast"),
   previewDialog: document.querySelector("#preview-dialog"),
   previewContent: document.querySelector("#preview-content"),
@@ -544,6 +546,7 @@ function renderDocument() {
   const doc = activeDocument();
   const generation = (renderGeneration += 1);
   hideQuoteToolbar();
+  hideRangeHandles();
   elements.documentBody.replaceChildren();
   lineIndex = new Map();
   markedLines = new Map();
@@ -667,13 +670,13 @@ function sameText(left, right) {
   return left.replace(/\s+/g, " ").trim() === right.replace(/\s+/g, " ").trim();
 }
 
-// Пустой ответ означает «пометить строку целиком»: строки ещё не отрисованы,
-// цитата занимает их полностью, либо колонки не сходятся с сохранённой цитатой.
-// Последнее — обычное дело для рецензии к другой версии статьи и для файла,
-// разобранного по тексту: колонок в нём не было. Подсветить по таким границам
-// значило бы уверенно показать не то место.
-function fragmentRange(entry) {
-  if (coversWholeLines(entry)) return null;
+// Диапазон записи в собранном документе. Пустой ответ означает, что показать
+// точное место нельзя: строки ещё не отрисованы либо колонки не сходятся с
+// сохранённой цитатой. Последнее — обычное дело для рецензии к другой версии
+// статьи и для файла, разобранного по тексту: колонок в нём не было. Взяться за
+// такие границы нельзя ни подсветкой, ни меткой — они уверенно показали бы не
+// то место.
+function anchorRange(entry) {
   const start = linePoint(entry.startLine, entry.startColumn);
   const end = linePoint(entry.endLine, entry.endColumn);
   if (!start || !end) return null;
@@ -687,6 +690,12 @@ function fragmentRange(entry) {
   }
   if (range.collapsed) return null;
   return sameText(range.toString(), entry.quote) ? range : null;
+}
+
+// Замечание, занимающее строки целиком, помечается самой строкой: заливка
+// цитаты повторила бы её край в край, ничего не добавив.
+function fragmentRange(entry) {
+  return coversWholeLines(entry) ? null : anchorRange(entry);
 }
 
 function publishHighlight(name, highlight) {
@@ -754,6 +763,8 @@ function applyAnnotationMarkers() {
 
   activeLines = nextActive;
 
+  scheduleHandleUpdate();
+
   if (!fragments) return;
   for (const [name, highlight] of fragments) {
     // Выделенное замечание рисуется поверх остальных: на пересечении двух цитат
@@ -761,6 +772,272 @@ function applyAnnotationMarkers() {
     if (name.startsWith("marginalia-active-")) highlight.priority = 1;
     publishHighlight(name, highlight);
   }
+}
+
+// Границы замечания. Цитата подсвечена ::highlight, а у подсветки нет ни узлов,
+// ни краёв, за которые можно взяться, — поэтому границы обозначены двумя
+// метками, которые ставятся по координатам диапазона.
+//
+// Метки показываются у одного замечания — того, что сейчас разобрано. Это не
+// экономия, а условие отклика: координаты берутся из раскладки, и читать их для
+// всей рецензии на статье в двадцать тысяч строк значит вернуть ту самую
+// заморозку, ради которой из документа убрали замеры отступов.
+const handles = {
+  start: elements.rangeHandles.querySelector('[data-edge="start"]'),
+  end: elements.rangeHandles.querySelector('[data-edge="end"]'),
+};
+
+function activeAnchoredEntry() {
+  const entry = activeDocument()?.entries.find((item) => item.id === state.activeEntryId);
+  return entry?.kind === "anchored" ? entry : null;
+}
+
+function hideRangeHandles() {
+  elements.rangeHandles.hidden = true;
+}
+
+function placeHandle(handle, left, top, height) {
+  handle.style.left = `${left}px`;
+  handle.style.top = `${top}px`;
+  handle.style.height = `${height}px`;
+}
+
+function updateRangeHandles() {
+  const entry = activeAnchoredEntry();
+  const range = entry ? anchorRange(entry) : null;
+  // Диапазон занимает столько прямоугольников, на сколько экранных строк лёг:
+  // начало живёт в первом, конец — в последнем.
+  const rects = range ? [...range.getClientRects()].filter((rect) => rect.width || rect.height) : [];
+  if (!rects.length) {
+    hideRangeHandles();
+    return;
+  }
+
+  const paneRect = elements.documentPane.getBoundingClientRect();
+  const offsetX = elements.documentPane.scrollLeft - paneRect.left;
+  const offsetY = elements.documentPane.scrollTop - paneRect.top;
+  const first = rects[0];
+  const last = rects.at(-1);
+  placeHandle(handles.start, first.left + offsetX, first.top + offsetY, first.height);
+  placeHandle(handles.end, last.right + offsetX, last.top + offsetY, last.height);
+  elements.rangeHandles.hidden = false;
+}
+
+// Пересчёт идёт кадром: прокрутка, перетаскивание границы и изменение ширины
+// панелей приходят чаще, чем браузер успевает рисовать, а координаты нужны один
+// раз на кадр.
+let handleFrame = 0;
+
+function scheduleHandleUpdate() {
+  if (handleFrame) return;
+  handleFrame = requestAnimationFrame(() => {
+    handleFrame = 0;
+    updateRangeHandles();
+  });
+}
+
+// Место в тексте под указателем. caretPositionFromPoint — стандарт, но в WebKit
+// он появился недавно, и запасной путь здесь обязателен, а не желателен.
+function caretAt(x, y) {
+  if (typeof document.caretPositionFromPoint === "function") {
+    const position = document.caretPositionFromPoint(x, y);
+    return position ? { node: position.offsetNode, offset: position.offset } : null;
+  }
+  if (typeof document.caretRangeFromPoint === "function") {
+    const range = document.caretRangeFromPoint(x, y);
+    return range ? { node: range.startContainer, offset: range.startOffset } : null;
+  }
+  return null;
+}
+
+function locationAt(x, y) {
+  const caret = caretAt(x, y);
+  const span = caret && sourceSpan(caret.node);
+  if (!span || !elements.documentBody.contains(span)) return null;
+  return {
+    line: Number(span.dataset.sourceLine),
+    column: cumulativeLineOffset(span, offsetInside(span, caret.node, caret.offset)),
+  };
+}
+
+// Шаг клавишей — один символ, а строка кончается там, где кончается её текст:
+// за краем берём соседнюю отрисованную строку. Идём по указателю строк, а не по
+// счёту: пустые строки разметки в нём не значатся, и шаг через них попал бы в
+// строку, которой на экране нет.
+function shiftLocation({ line, column }, direction) {
+  const known = indexedLine(line);
+  if (!known) return null;
+  const shifted = column + direction;
+  if (shifted >= 0 && shifted <= known.text.length) return { line, column: shifted };
+  const numbers = [...lineIndex.keys()];
+  const neighbour = numbers[numbers.indexOf(line) + direction];
+  if (neighbour === undefined) return null;
+  return { line: neighbour, column: direction > 0 ? 0 : (indexedLine(neighbour)?.text.length ?? 0) };
+}
+
+// Переставляет край записи и пересобирает цитату по новому месту. Цитата берётся
+// из самого документа, а не правится строкой: что видно на экране, то и уедет в
+// файл рецензии, поэтому она проходит asTyped — иначе неразрывные пробелы показа
+// оказались бы в выгрузке и перестали находиться поиском.
+function moveAnchor(entry, edge, location) {
+  const bounds = {
+    startLine: entry.startLine,
+    startColumn: entry.startColumn,
+    endLine: entry.endLine,
+    endColumn: entry.endColumn,
+  };
+  if (edge === "start") {
+    bounds.startLine = location.line;
+    bounds.startColumn = location.column;
+  } else {
+    bounds.endLine = location.line;
+    bounds.endColumn = location.column;
+  }
+  // Края не меняются местами и не сходятся в точку: замечание без единого
+  // символа не значит ничего, а перевёрнутое молча указало бы не туда.
+  if (compareKeys([bounds.startLine, bounds.startColumn], [bounds.endLine, bounds.endColumn]) >= 0) {
+    return false;
+  }
+
+  const start = linePoint(bounds.startLine, bounds.startColumn);
+  const end = linePoint(bounds.endLine, bounds.endColumn);
+  if (!start || !end) return false;
+  const range = document.createRange();
+  try {
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+  } catch {
+    return false;
+  }
+  const quote = asTyped(range.toString());
+  if (!quote.trim()) return false;
+
+  Object.assign(entry, bounds, { quote });
+  return true;
+}
+
+// Пока границу двигают, список не перестраивается: карточка ушла бы из-под
+// курсора, а собирать всю рецензию заново на каждое движение мыши дороже самого
+// перетаскивания. Меняем на месте ровно то, что зависит от границ.
+function fillMultiline(node, value) {
+  const parts = String(value).split("\n");
+  node.replaceChildren(
+    ...parts.flatMap((part, index) => (index ? [document.createElement("br"), part] : [part])),
+  );
+}
+
+function refreshAnchorCard(entry) {
+  const card = elements.reviewList.querySelector(
+    `.review-card[data-entry-id="${CSS.escape(entry.id)}"]`,
+  );
+  if (!card) return;
+  const quote = card.querySelector("blockquote");
+  if (quote) fillMultiline(quote, entry.quote);
+  const heading = card.querySelector(".line-link") ?? card.querySelector(".draft-heading span:last-child");
+  if (heading) heading.textContent = lineHeading(entry).toLowerCase();
+}
+
+function applyAnchorMove(entry, edge, location) {
+  if (!moveAnchor(entry, edge, location)) return false;
+  refreshAnchorCard(entry);
+  applyAnnotationMarkers();
+  return true;
+}
+
+// Порядок записей задаётся началом цитаты, поэтому сдвинутая граница может
+// перевести карточку через соседнюю: по окончании список пересобирается целиком.
+let anchorSaveTimer = 0;
+
+function finishAnchorChange() {
+  clearTimeout(anchorSaveTimer);
+  anchorSaveTimer = 0;
+  const doc = activeDocument();
+  if (!doc) return;
+  refreshReviewState();
+  persistReview(doc, { failed: "Область замечания изменена, но не сохранена." });
+}
+
+function scheduleAnchorFinish() {
+  clearTimeout(anchorSaveTimer);
+  anchorSaveTimer = setTimeout(finishAnchorChange, 500);
+}
+
+let dragging = null;
+
+// Слушаем не саму метку с захватом указателя, а документ: метка едет за
+// курсором и оказывается ровно под ним, а место в тексте определяется
+// попаданием точки — под собственной меткой оно вернуло бы кнопку вместо буквы.
+// Поэтому на время протяжки метки перестают ловить попадания (data-dragging в
+// стилях), и события приходят обычным всплытием.
+function startHandleDrag(handle, event) {
+  const entry = activeAnchoredEntry();
+  if (!entry) return;
+  // Без этого браузер начнёт выделять текст под меткой, и протяжка обернётся
+  // новым выделением поверх того замечания, которое человек правит.
+  event.preventDefault();
+  dragging = { edge: handle.dataset.edge, moved: false };
+  elements.rangeHandles.dataset.dragging = "";
+  document.body.dataset.anchoring = "";
+  handle.focus({ preventScroll: true });
+  document.addEventListener("pointermove", dragHandleTo);
+  document.addEventListener("pointerup", stopHandleDrag);
+  document.addEventListener("pointercancel", stopHandleDrag);
+}
+
+function dragHandleTo(event) {
+  if (!dragging) return;
+  const entry = activeAnchoredEntry();
+  const location = entry && locationAt(event.clientX, event.clientY);
+  if (!location) return;
+  const current =
+    dragging.edge === "start"
+      ? { line: entry.startLine, column: entry.startColumn }
+      : { line: entry.endLine, column: entry.endColumn };
+  // Указатель ходит чаще, чем меняется буква под ним: пересборка цитаты и
+  // подсветки нужна только там, где граница действительно переехала.
+  if (location.line === current.line && location.column === current.column) return;
+  if (applyAnchorMove(entry, dragging.edge, location)) dragging.moved = true;
+}
+
+function stopHandleDrag() {
+  if (!dragging) return;
+  document.removeEventListener("pointermove", dragHandleTo);
+  document.removeEventListener("pointerup", stopHandleDrag);
+  document.removeEventListener("pointercancel", stopHandleDrag);
+  delete elements.rangeHandles.dataset.dragging;
+  delete document.body.dataset.anchoring;
+  const moved = dragging.moved;
+  dragging = null;
+  if (moved) finishAnchorChange();
+}
+
+function nudgeAnchor(handle, event) {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const entry = activeAnchoredEntry();
+  if (!entry) return;
+  event.preventDefault();
+  const edge = handle.dataset.edge;
+  const from =
+    edge === "start"
+      ? { line: entry.startLine, column: entry.startColumn }
+      : { line: entry.endLine, column: entry.endColumn };
+  const next = shiftLocation(from, event.key === "ArrowRight" ? 1 : -1);
+  if (!next || !applyAnchorMove(entry, edge, next)) return;
+  // Клавишу держат сериями: список и запись обновляем в паузе, иначе каждое
+  // нажатие перестраивало бы рецензию и писало в хранилище.
+  scheduleAnchorFinish();
+}
+
+for (const handle of Object.values(handles)) {
+  handle.addEventListener("pointerdown", (event) => startHandleDrag(handle, event));
+  // Выделение текста начинается с mousedown, и отказ на pointerdown его не
+  // отменяет: без этого протяжка по тексту оставляла бы за собой выделение.
+  handle.addEventListener("mousedown", (event) => event.preventDefault());
+  handle.addEventListener("keydown", (event) => nudgeAnchor(handle, event));
+  // Уходя с метки, человек заканчивает правку: ждать паузы таймера незачем.
+  handle.addEventListener("blur", () => {
+    if (anchorSaveTimer) finishAnchorChange();
+  });
 }
 
 function refreshReviewState(options) {
@@ -1213,6 +1490,9 @@ function hideQuoteToolbar({ restoreFocus = false } = {}) {
 }
 
 function handleDocumentScroll() {
+  // Метки держатся за место в тексте, а не за экран: при прокрутке они едут
+  // вместе с цитатой, а не исчезают вслед за панелью создания замечания.
+  scheduleHandleUpdate();
   if (elements.quoteToolbar.contains(document.activeElement)) return;
   hideQuoteToolbar();
 }
@@ -1829,6 +2109,13 @@ document.addEventListener("keydown", (event) => {
 });
 elements.documentPane.addEventListener("scroll", handleDocumentScroll, { passive: true });
 window.addEventListener("resize", () => hideQuoteToolbar());
+
+// Ширину панели тянут мышью, и события resize при этом нет: наблюдатель ловит и
+// её, и окно, и убранное оглавление одним правилом. Строки при этом
+// перекладываются, а метки стоят по координатам — без пересчёта они остались бы
+// на месте прежней раскладки.
+new ResizeObserver(scheduleHandleUpdate).observe(elements.documentPane);
+
 
 elements.searchInput.addEventListener("input", () => runSearch(elements.searchInput.value));
 elements.searchInput.addEventListener("keydown", (event) => {

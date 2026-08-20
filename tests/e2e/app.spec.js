@@ -1540,3 +1540,81 @@ test("keeps an opened review on screen when the browser refuses to store it", as
   await expect(page.locator("#save-state")).toBeVisible();
   await expect(page.locator("#toast")).toContainText("не сохранена");
 });
+
+// Точку в тексте, к которой относится замечание, выбирают на глаз и промахиваются:
+// раньше оставалось удалить запись и выделить заново, потеряв и комментарий, и
+// место в рецензии. Границы подсветки тянутся, и цитата идёт за ними.
+test("re-anchors a committed note by dragging and nudging the highlight edges", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  // «строка» внутри строки 4: у замечания есть оба края, и оба на виду.
+  await quotePartOfLine(page, 4, 7, 13, "Правка");
+  await commitDraft(page, "Уточнить формулировку.");
+  await expect(page.locator(".review-card blockquote")).toHaveText("строка");
+  await expect(page.locator(".review-card .line-link")).toHaveText("строка 4");
+
+  const startHandle = page.locator('.range-handle[data-edge="start"]');
+  const endHandle = page.locator('.range-handle[data-edge="end"]');
+  await expect(startHandle).toBeVisible();
+  await expect(endHandle).toBeVisible();
+
+  // Точка на экране, где кончается нужное слово: тянуть метку наугад на столько-то
+  // пикселей значит мерить шрифт, а не поведение.
+  const pointAt = (line, column) =>
+    page.evaluate(
+      ({ line: target, column: at }) => {
+        const span = document.querySelector(`.source-line[data-source-line="${target}"]`);
+        const range = document.createRange();
+        range.setStart(span.firstChild, Math.max(0, at - 1));
+        range.setEnd(span.firstChild, at);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.right, y: rect.top + rect.height / 2 };
+      },
+      { line, column },
+    );
+
+  const dragTo = async (handle, point) => {
+    const box = await handle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(point.x, point.y, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  // Конец цитаты уезжает вправо, в глубину слова «содержит». Точность попадания
+  // мышью здесь ни при чём: важно, что цитата пошла за меткой.
+  await dragTo(endHandle, await pointAt(4, 22));
+  await expect(page.locator(".review-card blockquote")).toHaveText(/^строка содерж/);
+
+  // Начало уезжает на строку выше: меняется не только цитата, но и номера строк.
+  await dragTo(startHandle, await pointAt(3, 8));
+  await expect(page.locator(".review-card .line-link")).toHaveText("строки 3–4");
+  await expect(page.locator(".review-card blockquote")).toContainText("с целью.");
+
+  // Клавиатура делает то же самое по одному символу: метка — обычная кнопка.
+  const quoteText = () => page.locator(".review-card blockquote").textContent();
+  const dragged = await quoteText();
+  await endHandle.focus();
+  await endHandle.press("ArrowLeft");
+  await expect.poll(quoteText).toBe(dragged.slice(0, -1));
+  await endHandle.press("ArrowRight");
+  await expect.poll(quoteText).toBe(dragged);
+
+  // Что видно на экране, то и уедет в файл: подсветка, карточка и выгрузка
+  // говорят об одном месте.
+  const highlighted = await highlightedFragments(page, "active");
+  expect(highlighted.join("").replace(/\s+/g, " ")).toBe(dragged.replace(/\s+/g, " "));
+  await page.locator("#preview-review").click();
+  await expect(page.locator("#preview-content")).toContainText("### Строки 3–4 · Правка");
+  await expect(page.locator("#preview-content")).toContainText("содерж");
+  await page.locator("#close-preview").click();
+
+  // Перепривязка — такая же работа, как сам комментарий: она переживает
+  // перезагрузку, иначе о ней узнают, лишь потеряв.
+  await page.reload();
+  await expect(page.locator(".review-card blockquote")).toHaveText(dragged);
+  await expect(page.locator(".review-card .line-link")).toHaveText("строки 3–4");
+  await expect(page.locator(".review-card .card-comment")).toHaveText("Уточнить формулировку.");
+});
+
