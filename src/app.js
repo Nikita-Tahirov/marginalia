@@ -1382,7 +1382,7 @@ function installedAsApp() {
 
 function readFailureAdvice() {
   return installedAsApp()
-    ? "Разрешите приложению доступ к этой папке в настройках системы или откройте файл из другой папки."
+    ? "Перетащите файл в это окно — перетаскиванию система доступ даёт; иначе разрешите приложению доступ к этой папке в настройках системы."
     : "Попробуйте ещё раз или откройте файл из другой папки.";
 }
 
@@ -1410,7 +1410,13 @@ async function importReview(file) {
     return;
   }
   elements.reviewInput.value = "";
+  await applyReviewText(text, doc);
+}
 
+// Разобранный текст рецензии приходит двумя путями — из выбранного файла и из
+// перетащенного, — а дальше судьба у него одна, поэтому она и живёт отдельно от
+// чтения.
+async function applyReviewText(text, doc) {
   const parsed = parseReview(text);
   if (!parsed.entries.length) {
     showToast("В файле нет замечаний, которые удалось бы разобрать.", "error");
@@ -2002,6 +2008,67 @@ function restoreTheme() {
 elements.openFiles.addEventListener("click", () => elements.fileInput.click());
 elements.openFilesEmpty.addEventListener("click", () => elements.fileInput.click());
 elements.fileInput.addEventListener("change", () => loadFiles(elements.fileInput.files));
+
+// Установленному приложению система закрывает «Загрузки», «Рабочий стол» и
+// «Документы»: доступ к ним выдают ему отдельно от браузера, из которого его
+// ставили, а спросить разрешение оно не умеет — файл, выбранный в системной
+// панели, просто не читается. Перетаскивание идёт мимо этого запрета: право на
+// файл даёт сам жест. Поэтому окно принимает файл там, где кнопка уже отказала,
+// и об этом же говорит совет при отказе чтения.
+const REVIEW_MARK = /<!--\s*marginalia:\d+/;
+
+function draggingFiles(transfer) {
+  return [...(transfer?.types ?? [])].includes("Files");
+}
+
+function markdownFiles(transfer) {
+  const files = transfer?.files ? [...transfer.files] : [];
+  return files.filter((file) => /\.(md|markdown)$/i.test(file.name));
+}
+
+async function openDroppedFiles(files) {
+  for (const file of files) {
+    let text;
+    try {
+      text = await readFileText(file);
+    } catch (error) {
+      showToast(
+        `Не удалось прочитать «${file.name}»: ${readFailureReason(error)}. ${readFailureAdvice()}`,
+        "error",
+      );
+      continue;
+    }
+    // Рецензию узнаём по машинному блоку, а не по имени файла: имя зависит от
+    // того, кто его сохранял, а блок в рецензии есть всегда.
+    const doc = activeDocument();
+    if (doc && REVIEW_MARK.test(text)) {
+      await applyReviewText(text, doc);
+      continue;
+    }
+    const loaded = await ingestText(text, file.name);
+    if (loaded) activateDocument(loaded.id);
+  }
+}
+
+document.addEventListener("dragover", (event) => {
+  if (!draggingFiles(event.dataTransfer)) return;
+  // Отменённый dragover — единственный способ сказать браузеру, что файл здесь
+  // ждут: без него события drop не будет вовсе.
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+});
+
+document.addEventListener("drop", (event) => {
+  if (!draggingFiles(event.dataTransfer)) return;
+  // Без этого Chrome откроет файл сам и унесёт окно приложения с собой.
+  event.preventDefault();
+  const files = markdownFiles(event.dataTransfer);
+  if (!files.length) {
+    showToast("Перетащите файл .md или .markdown.", "error");
+    return;
+  }
+  openDroppedFiles(files).catch(() => showToast("Файл открыть не удалось.", "error"));
+});
 elements.pasteText.addEventListener("click", pasteFromClipboard);
 elements.submitPaste.addEventListener("click", () => {
   const text = elements.pasteInput.value;

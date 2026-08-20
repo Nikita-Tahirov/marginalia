@@ -19,6 +19,21 @@ async function loadMarkdown(page, name = "article.md", text = article) {
   await expect(page.locator("#document-select")).toContainText(name);
 }
 
+// Перетаскивание из Finder до страницы доходит одним событием drop с готовым
+// DataTransfer: системную часть жеста браузер отрабатывает сам, приложению
+// достаётся только оно.
+async function dropFiles(page, files) {
+  await page.evaluate((items) => {
+    const transfer = new DataTransfer();
+    for (const item of items) {
+      transfer.items.add(new File([item.text], item.name, { type: item.type ?? "text/markdown" }));
+    }
+    document.dispatchEvent(
+      new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }),
+    );
+  }, files);
+}
+
 async function quoteWholeLine(page, line, type = "Правка") {
   const source = page.locator(`.source-line.line-origin[data-source-line="${line}"]`).first();
   await source.focus();
@@ -1558,6 +1573,58 @@ test("sends the installed app to system settings when a folder is closed to it",
 
   await expect(page.locator("#toast")).toContainText("настройках системы");
   await expect(page.locator("#toast")).not.toContainText("Попробуйте ещё раз");
+});
+
+// Установленному приложению система не даёт прочитать файл, выбранный в её же
+// панели: доступ к «Загрузкам», «Рабочему столу» и «Документам» выдают ему
+// отдельно от браузера, а спросить разрешение оно не умеет. Перетаскивание —
+// единственный путь, где право на файл даёт сам жест, поэтому окно обязано
+// принимать так и статью, и рецензию, различая их без подсказки в имени.
+test("opens a dragged article and a dragged review with no file picker involved", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await dropFiles(page, [{ name: "перетащенная.md", text: article }]);
+  await expect(page.locator("#document-select")).toContainText("перетащенная.md");
+  await expect(page.locator("#document-lines")).toContainText("9");
+
+  await quoteWholeLine(page, 3, "Вопрос");
+  await commitDraft(page, "Замечание из перетащенного файла.", "");
+  await expect(page.locator(".review-card")).toHaveCount(1);
+
+  const exported = await page.evaluate(() => {
+    const dialog = document.querySelector("#preview-content");
+    document.querySelector("#preview-review").click();
+    const text = dialog.textContent;
+    document.querySelector("#close-preview").click();
+    return text;
+  });
+
+  // Тот же текст узнаётся по SHA-256 и вернул бы прежнюю рецензию, поэтому для
+  // чистого листа нужен другой заголовок при той же строке привязки.
+  await dropFiles(page, [
+    { name: "чистая.md", text: article.replace("# Заголовок", "# Другой заголовок") },
+  ]);
+  await expect(page.locator(".review-card")).toHaveCount(0);
+
+  // Имя нарочно без «.review»: рецензию узнают по машинному блоку, а не по
+  // тому, как её назвал отправитель.
+  await dropFiles(page, [{ name: "письмо от руководителя.md", text: exported }]);
+  await expect(page.locator(".review-card")).toHaveCount(1);
+  await expect(page.locator(".review-card .card-comment")).toHaveText(
+    "Замечание из перетащенного файла.",
+  );
+  await expect(page.locator("#document-notes")).toContainText("1");
+});
+
+test("says what it accepts when the dragged file is not markdown", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  await dropFiles(page, [{ name: "скан.pdf", text: "%PDF-1.4", type: "application/pdf" }]);
+  await expect(page.locator("#toast")).toContainText(".md");
+  await expect(page.locator("#document-select")).toContainText("article.md");
 });
 
 test("keeps an opened review on screen when the browser refuses to store it", async ({ page }) => {
