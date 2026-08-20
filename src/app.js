@@ -1715,14 +1715,54 @@ function deleteEntry(id) {
   });
 }
 
-function activateEntry(id) {
+// Куда вести взгляд, зависит от того, откуда пришли: из панели — к месту в
+// тексте, из текста — к карточке. Иначе половина пути делается вслепую: человек
+// щёлкает по цитате и ищет глазами, где в длинном списке отозвалось.
+function activateEntry(id, reveal = "document") {
   const entry = activeDocument()?.entries.find((item) => item.id === id);
   if (!entry || entry.kind !== "anchored") return;
   state.activeEntryId = id;
+  // Замечание, щёлкнутое в тексте, показывается даже когда его тип снят
+  // фильтром: иначе нажатие остаётся без ответа, а причина — в строке фильтров,
+  // куда человек в этот момент не смотрит. Чип тут же загорается сам.
+  if (reveal === "review") state.selectedTypes.add(entry.type);
+  renderFilters();
   renderReview();
   applyAnnotationMarkers();
+  if (reveal === "review") {
+    const card = elements.reviewList.querySelector(`.review-card[data-entry-id="${CSS.escape(id)}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
   const target = elements.documentBody.querySelector(`.source-line[data-source-line="${entry.startLine}"]`);
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Замечание под точкой. Диапазоны строятся только для записей, чьи строки
+// накрывают ту, по которой щёлкнули: обходить всю рецензию ради одного нажатия
+// незачем, а на длинной статье и накладно.
+function rangeHasPoint(range, x, y) {
+  for (const rect of range.getClientRects()) {
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return true;
+  }
+  return false;
+}
+
+function entryAtPoint(line, x, y) {
+  let best = null;
+  for (const entry of activeDocument()?.entries ?? []) {
+    if (entry.kind !== "anchored") continue;
+    if (line < entry.startLine || line > entry.endLine) continue;
+    const range = anchorRange(entry);
+    if (range && !rangeHasPoint(range, x, y)) continue;
+    // Наложение разбирается в пользу самого узкого замечания: широкое человек
+    // достанет и в другом месте, а точное иначе не выбрать вовсе. Замечание,
+    // показанное пометкой строки целиком, точного края не имеет и в этом споре
+    // проигрывает цитате.
+    const width = range ? entry.quote.length : Number.POSITIVE_INFINITY;
+    if (!best || width < best.width) best = { id: entry.id, width };
+  }
+  return best;
 }
 
 // Подсвеченные строки прошлого запроса: гасим только их, а не весь документ.
@@ -2066,6 +2106,18 @@ elements.reviewList.addEventListener("click", (event) => {
 });
 
 elements.documentBody.addEventListener("mouseup", () => requestAnimationFrame(handleSelection));
+// Замечание на холсте отзывается в панели: щёлкнув по подсвеченной цитате,
+// человек спрашивает «что здесь написано», и ответ лежит в карточке.
+elements.documentBody.addEventListener("click", (event) => {
+  // Выделение под курсором — начало нового замечания, а не обращение к старому:
+  // панель цитаты уже показана, и подменять её активацией нельзя.
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed) return;
+  const span = sourceSpan(event.target);
+  if (!span) return;
+  const hit = entryAtPoint(Number(span.dataset.sourceLine), event.clientX, event.clientY);
+  if (hit) activateEntry(hit.id, "review");
+});
 elements.documentBody.addEventListener("keydown", (event) => {
   const line = event.target.closest(".source-line.line-origin");
   if (!line) return;

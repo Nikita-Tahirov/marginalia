@@ -1675,3 +1675,102 @@ test("re-anchors a committed note by dragging and nudging the highlight edges", 
   await expect(page.locator(".review-card .card-comment")).toHaveText("Уточнить формулировку.");
 });
 
+const crowded = `# Заголовок
+
+Первый абзац о государственном институте культуры.
+Второй абзац продолжает ту же мысль другими словами.
+Третий абзац говорит о методе.
+Четвёртый абзац говорит о материале.
+Пятый абзац говорит о выводах.
+Шестой абзац говорит об источниках.
+Седьмой абзац возвращается к началу разговора.
+Восьмой абзац завершает раздел.
+`;
+
+// Связь «карточка → текст» была односторонней: щёлкнув по цитате в статье,
+// человек оставался без ответа и искал нужное замечание в списке глазами.
+test("reveals the matching card when a highlighted fragment is clicked", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page, "crowded.md", crowded);
+
+  // Замечания на дальних строках: список длиннее панели, и прокрутка к карточке
+  // становится видимой работой, а не совпадением.
+  for (const line of [3, 4, 5, 6, 7, 8, 9, 10]) {
+    await quoteWholeLine(page, line, "Вопрос");
+    await commitDraft(page, `Замечание к строке ${line}.`);
+  }
+  // Внутри первой строки — второе, более узкое замечание: на наложении
+  // выбирается оно, широкое человек достанет и в другом месте.
+  await quotePartOfLine(page, 3, 14, 20, "Правка");
+  await commitDraft(page, "Узкое замечание.");
+  await expect(page.locator(".review-card")).toHaveCount(9);
+
+  const fragmentPoint = (line, from, to) =>
+    page.evaluate(
+      ({ line: target, from: start, to: end }) => {
+        const span = document.querySelector(`.source-line[data-source-line="${target}"]`);
+        const range = document.createRange();
+        range.setStart(span.firstChild, start);
+        range.setEnd(span.firstChild, end);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      },
+      { line, from, to },
+    );
+
+  const activeCard = () =>
+    page.evaluate(() => {
+      const card = document.querySelector(".review-card.is-active");
+      if (!card) return null;
+      const list = document.querySelector("#review-list").getBoundingClientRect();
+      const rect = card.getBoundingClientRect();
+      return {
+        text: card.textContent,
+        inView: rect.top >= list.top - 1 && rect.bottom <= list.bottom + 1,
+      };
+    });
+
+  // Панель ужимается мышью до предела, и дефект, видимый на узкой, на широкой
+  // не виден: меряем обе.
+  for (const width of [520, 310]) {
+    await page.evaluate((value) => {
+      document.documentElement.style.setProperty("--review-width", `${value}px`);
+    }, width);
+
+    // Уводим список к последней карточке, чтобы первая заведомо ушла из виду.
+    await page.locator(".review-card").last().scrollIntoViewIfNeeded();
+    const far = await fragmentPoint(3, 30, 40);
+    await page.mouse.click(far.x, far.y);
+    const revealed = await activeCard();
+    expect(revealed?.text, `ширина ${width}`).toContain("Замечание к строке 3.");
+    // Список прокручивается плавно: смотрим, где карточка осталась, а не где
+    // она была в первый кадр.
+    await expect
+      .poll(async () => (await activeCard())?.inView, { message: `ширина ${width}` })
+      .toBe(true);
+
+    // Наложение разбирается в пользу узкой цитаты.
+    const narrow = await fragmentPoint(3, 15, 19);
+    await page.mouse.click(narrow.x, narrow.y);
+    expect((await activeCard())?.text, `ширина ${width}`).toContain("Узкое замечание.");
+  }
+
+  await page.evaluate(() => {
+    document.documentElement.style.removeProperty("--review-width");
+  });
+
+  // Замечание, спрятанное фильтром, всё равно отзывается: нажатие по цитате
+  // иначе осталось бы без ответа, а причина — в строке фильтров, куда человек в
+  // этот момент не смотрит.
+  await page.locator('[data-filter-type="Правка"]').click();
+  await expect(page.locator(".review-card")).toHaveCount(8);
+  const hidden = await fragmentPoint(3, 15, 19);
+  await page.mouse.click(hidden.x, hidden.y);
+  expect((await activeCard())?.text).toContain("Узкое замечание.");
+  await expect(page.locator('[data-filter-type="Правка"]')).toHaveAttribute("aria-pressed", "true");
+
+  // Выделение для нового замечания работает как прежде: протяжка по тексту
+  // по-прежнему открывает панель типов, а не активирует соседнюю запись.
+  await selectPartOfLine(page, 5, 0, 12);
+  await expect(page.locator("#quote-toolbar")).toBeVisible();
+});
