@@ -1527,6 +1527,39 @@ test("says why a review file could not be opened instead of doing nothing", asyn
   await expect(page.locator(".review-card")).toHaveCount(0);
 });
 
+// Установленное приложение система считает отдельной программой и доступ к
+// папкам выдаёт ему отдельно от браузера. Тот же адрес и тот же файл: во
+// вкладке рецензия открывается, в приложении отказ — и «попробуйте ещё раз»
+// здесь не поможет никогда, поэтому совет обязан вести в настройки системы.
+test("sends the installed app to system settings when a folder is closed to it", async ({ page }) => {
+  await page.addInitScript(() => {
+    const matchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) =>
+      query.includes("display-mode: standalone") ? { matches: true, media: query } : matchMedia(query);
+  });
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  await page.evaluate(() => {
+    const deny = () => new DOMException("нет доступа", "NotReadableError");
+    File.prototype.text = () => Promise.reject(deny());
+    FileReader.prototype.readAsText = function () {
+      queueMicrotask(() => {
+        this.error = deny();
+        this.onerror?.(new Event("error"));
+      });
+    };
+  });
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание.\n"),
+  });
+
+  await expect(page.locator("#toast")).toContainText("настройках системы");
+  await expect(page.locator("#toast")).not.toContainText("Попробуйте ещё раз");
+});
+
 test("keeps an opened review on screen when the browser refuses to store it", async ({ page }) => {
   await page.goto("/");
   await loadMarkdown(page);
