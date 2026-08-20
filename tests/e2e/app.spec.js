@@ -1111,8 +1111,12 @@ test("keeps the replacement field out of the card until it is written", async ({
   await expect(page.locator(".review-card .card-comment")).toHaveText("Формулировка тяжеловата.");
   await expect(page.locator(".review-card .replacement")).toHaveCount(0);
 
-  // Дописать замену по-прежнему можно: карандаш открывает то же поле.
+  // Дописать замену по-прежнему можно: карандаш открывает то же поле. Форма
+  // ставит курсор следующим кадром, и вводить до этого — значит писать в поле,
+  // у которого фокус вот-вот отберут: на медленной машине прогон краснел
+  // именно здесь.
   await page.locator(".review-card .card-edit").click();
+  await expect(page.locator("#edit-comment")).toBeFocused();
   await page.locator("#edit-replacement").fill("Более лёгкая формулировка.");
   await page.locator("#edit-replacement").press("Escape");
   await expect(page.locator(".review-card .replacement p")).toHaveText(
@@ -1122,6 +1126,7 @@ test("keeps the replacement field out of the card until it is written", async ({
   // Опустевшая замена снова уходит из карточки, а не остаётся пустой рамкой:
   // одни пробелы — это не записанный текст.
   await page.locator(".review-card .replacement").click();
+  await expect(page.locator("#edit-replacement")).toBeFocused();
   await page.locator("#edit-replacement").fill("   ");
   await page.locator("#edit-replacement").press("Escape");
   await expect(page.locator(".review-card .replacement")).toHaveCount(0);
