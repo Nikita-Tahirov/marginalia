@@ -25,6 +25,7 @@ import {
   saveDocument,
   saveReview as storeReview,
 } from "./storage.js";
+import { setUpReadingScale } from "./reading.js";
 import { keepAppFresh, noticeAfterUpdate } from "./updates.js";
 import {
   canPromptInstall,
@@ -61,6 +62,8 @@ const elements = {
   copyReview: document.querySelector("#copy-review"),
   saveReview: document.querySelector("#save-review"),
   themeToggle: document.querySelector("#theme-toggle"),
+  textSmaller: document.querySelector("#text-smaller"),
+  textLarger: document.querySelector("#text-larger"),
   tocList: document.querySelector("#toc-list"),
   documentMeta: document.querySelector("#document-meta"),
   documentLines: document.querySelector("#document-lines"),
@@ -2116,6 +2119,13 @@ window.addEventListener("resize", () => hideQuoteToolbar());
 // на месте прежней раскладки.
 new ResizeObserver(scheduleHandleUpdate).observe(elements.documentPane);
 
+setUpReadingScale({
+  root: document.documentElement,
+  smaller: elements.textSmaller,
+  larger: elements.textLarger,
+  // Кегль сменился — строки переложились, и метки границ надо ставить заново.
+  onChange: scheduleHandleUpdate,
+});
 
 elements.searchInput.addEventListener("input", () => runSearch(elements.searchInput.value));
 elements.searchInput.addEventListener("keydown", (event) => {

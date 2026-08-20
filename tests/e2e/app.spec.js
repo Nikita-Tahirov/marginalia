@@ -1541,6 +1541,63 @@ test("keeps an opened review on screen when the browser refuses to store it", as
   await expect(page.locator("#toast")).toContainText("не сохранена");
 });
 
+// Кегль статьи выбирает читатель: вычитка идёт часами и на чужом экране.
+// Растягивать при этом полагается текст, а не рабочее место — шапка, панель
+// рецензии и стрелки поиска остаются прежними.
+test("resizes only the article text from the header and remembers the size", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  const measure = () =>
+    page.evaluate(() => {
+      const size = (selector) => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+      const arrows = document.querySelector("#search-next").getBoundingClientRect();
+      return {
+        paragraph: size(".document-body p"),
+        heading: size(".document-body h1"),
+        review: size(".empty-review p"),
+        brand: size(".brand"),
+        arrows: [Math.round(arrows.x), Math.round(arrows.y), Math.round(arrows.width)],
+      };
+    });
+
+  const usual = await measure();
+  await page.locator("#text-larger").click();
+  const larger = await measure();
+  expect(larger.paragraph).toBeGreaterThan(usual.paragraph);
+  expect(larger.heading).toBeGreaterThan(usual.heading);
+  // Панель рецензии, шапка и стрелки поиска — рабочее место, а не статья.
+  expect(larger.review).toBe(usual.review);
+  expect(larger.brand).toBe(usual.brand);
+  expect(larger.arrows).toEqual(usual.arrows);
+
+  // Размер выбирают под свои глаза, а не под статью: он общий для документов и
+  // переживает перезагрузку — иначе его пришлось бы подбирать каждый вечер.
+  await loadMarkdown(page, "second.md", "# Второй\n\nТекст.\n");
+  expect((await measure()).paragraph).toBe(larger.paragraph);
+  await page.reload();
+  await expect(page.locator(".document-body p").first()).toBeVisible();
+  expect((await measure()).paragraph).toBe(larger.paragraph);
+
+  await page.locator("#text-smaller").click();
+  expect((await measure()).paragraph).toBe(usual.paragraph);
+
+  // Шкала конечна: на краю кнопка гаснет, а не делает вид, что сработала.
+  const pressUntilDisabled = async (selector) => {
+    for (let step = 0; step < 12; step += 1) {
+      if (await page.locator(selector).isDisabled()) return step;
+      await page.locator(selector).click();
+    }
+    return null;
+  };
+
+  expect(await pressUntilDisabled("#text-larger")).not.toBeNull();
+  expect((await measure()).paragraph).toBeLessThanOrEqual(usual.paragraph * 1.5 + 0.01);
+
+  expect(await pressUntilDisabled("#text-smaller")).not.toBeNull();
+  expect((await measure()).paragraph).toBeGreaterThanOrEqual(usual.paragraph * 0.8 - 0.01);
+});
+
 // Точку в тексте, к которой относится замечание, выбирают на глаз и промахиваются:
 // раньше оставалось удалить запись и выделить заново, потеряв и комментарий, и
 // место в рецензии. Границы подсветки тянутся, и цитата идёт за ними.

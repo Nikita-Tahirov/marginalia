@@ -121,6 +121,11 @@
 
 :root {
   --app-header-height: 52px;
+  /* Множитель кегля статьи. Трогает только текст документа: интерфейс, номера
+     строк и панель рецензии остаются прежними — растягивать вместе с текстом
+     нужно чтение, а не рабочее место. Значение ставит src/reading.js; здесь оно
+     объявлено, чтобы вид не зависел от того, успел ли выполниться сценарий. */
+  --reading-scale: 1;
   --toc-width: 248px;
   --review-width: 520px;
   --resizer-width: 7px;
@@ -396,6 +401,14 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Мельче и крупнее — одно действие в двух направлениях: кнопки стоят вплотную
+   и читаются как один переключатель, а не как два соседних действия шапки. */
+.text-scale {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .theme-toggle {
@@ -1213,25 +1226,43 @@ body[data-resizing] {
   scroll-margin-top: var(--space-6);
 }
 
+/* Кегли статьи умножаются на выбранный масштаб, а не наследуют один размер от
+   корня документа: заголовки и текст соотносятся между собой замыслом макета, и
+   это соотношение должно пережить увеличение. */
 .document-body h1 {
   margin-top: var(--space-4);
-  font-size: 34px;
+  font-size: calc(34px * var(--reading-scale));
 }
 
 .document-body h2 {
   margin-top: var(--space-6);
-  font-size: 27px;
+  font-size: calc(27px * var(--reading-scale));
 }
 
 .document-body h3 {
   margin-top: var(--space-4);
-  font-size: 22px;
+  font-size: calc(22px * var(--reading-scale));
+}
+
+/* Кегли мелких заголовков повторяют макет — 20, 16 и 13 пикселей: сами по себе
+   эти правила лишние, но без них подзаголовки остались бы единственной частью
+   статьи, которая не слушается масштаба. */
+.document-body h4 {
+  font-size: calc(20px * var(--reading-scale));
+}
+
+.document-body h5 {
+  font-size: calc(16px * var(--reading-scale));
+}
+
+.document-body h6 {
+  font-size: calc(13px * var(--reading-scale));
 }
 
 .document-body p,
 .document-body li,
 .document-body blockquote {
-  font-size: 14px;
+  font-size: calc(14px * var(--reading-scale));
   line-height: 1.68;
 }
 
@@ -1256,7 +1287,7 @@ body[data-resizing] {
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
   background: var(--color-neutral-100);
-  font-size: 12px;
+  font-size: calc(12px * var(--reading-scale));
   line-height: 1.55;
 }
 
@@ -1264,7 +1295,7 @@ body[data-resizing] {
   width: 100%;
   margin: var(--space-3) 0;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: calc(12px * var(--reading-scale));
 }
 
 .document-body th,
@@ -1774,8 +1805,16 @@ body[data-anchoring] {
   .toc-bar,
   .pane-resizer[data-resize="toc"],
   /* Переключать нечего: оглавления здесь нет по самой раскладке. */
-  #toggle-toc {
+  #toggle-toc,
+  /* Подпись бренда уходит раньше, чем на планшете в книжной ориентации: место
+     в шапке понадобилось размеру текста, а из всего, что здесь стоит, название
+     приложения — единственное, что человек и так знает. Значок остаётся. */
+  .brand span:not(.brand-mark) {
     display: none;
+  }
+
+  .brand {
+    padding-right: var(--space-3);
   }
 
   .search-box {

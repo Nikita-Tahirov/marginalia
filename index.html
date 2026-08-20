@@ -152,6 +152,35 @@
           >
             <span class="mi" aria-hidden="true">download</span>
           </button>
+          <!-- Размер текста статьи выбирает читатель: вычитка идёт часами, а
+               удобный кегль у каждого свой и зависит от экрана. Кнопки стоят
+               рядом с оглавлением и темой — это настройки показа, а не
+               действия с рецензией. Знаки нарисованы svg: шрифт значков урезан
+               до девяти глифов, которые уже нужны интерфейсу. -->
+          <div class="text-scale" role="group" aria-label="Размер текста статьи">
+            <button
+              id="text-smaller"
+              class="btn btn-secondary action-button"
+              type="button"
+              data-tooltip="Мельче"
+              aria-label="Уменьшить размер текста статьи"
+            >
+              <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M3.6 7.5h7.8"></path>
+              </svg>
+            </button>
+            <button
+              id="text-larger"
+              class="btn btn-secondary action-button"
+              type="button"
+              data-tooltip="Крупнее"
+              aria-label="Увеличить размер текста статьи"
+            >
+              <svg class="glyph" aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M7.5 3.6v7.8M3.6 7.5h7.8"></path>
+              </svg>
+            </button>
+          </div>
           <!-- Оглавление вспомогательное: место под него человек вправе
                вернуть документу. Переключатель живёт в шапке, а не в самой
                панели, — иначе скрытую панель нечем было бы вернуть. -->
