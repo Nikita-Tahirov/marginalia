@@ -1542,15 +1542,53 @@ test("says why a review file could not be opened instead of doing nothing", asyn
   await expect(page.locator(".review-card")).toHaveCount(0);
 });
 
-// Установленное приложение система считает отдельной программой и доступ к
-// папкам выдаёт ему отдельно от браузера. Тот же адрес и тот же файл: во
-// вкладке рецензия открывается, в приложении отказ — и «попробуйте ещё раз»
-// здесь не поможет никогда, поэтому совет обязан вести в настройки системы.
-test("sends the installed app to system settings when a folder is closed to it", async ({ page }) => {
+// Отказ в доступе к папке не лечится повтором: пока человек не сходит в
+// настройки, тот же файл будет отказывать всегда. Подсказка живёт 4 секунды и
+// для дороги в настройки не годится, поэтому шаги обязаны остаться на экране.
+test("keeps the folder-access steps on screen instead of a vanishing toast", async ({ page }) => {
+  await page.goto("/");
+  await loadMarkdown(page);
+
+  await page.evaluate(() => {
+    const deny = () => new DOMException("нет доступа", "NotReadableError");
+    File.prototype.text = () => Promise.reject(deny());
+    FileReader.prototype.readAsText = function () {
+      queueMicrotask(() => {
+        this.error = deny();
+        this.onerror?.(new Event("error"));
+      });
+    };
+  });
+  await page.locator("#review-input").setInputFiles({
+    name: "article.review.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание.\n"),
+  });
+
+  await expect(page.locator("#access-dialog")).toBeVisible();
+  // Шагов не меньше двух: один пункт — это не дорога, а лозунг.
+  expect(await page.locator("#access-steps li").count()).toBeGreaterThan(1);
+  // Совет, который здесь не работает никогда, не должен возвращаться в текст.
+  await expect(page.locator("#access-dialog")).not.toContainText("Попробуйте ещё раз");
+  await expect(page.locator("#access-dialog")).not.toContainText("Перетащите");
+
+  // Подсказка исчезает сама, диалог — только по кнопке: иначе человек вернётся
+  // из настроек к пустому экрану и не вспомнит, что читал.
+  await page.waitForTimeout(4600);
+  await expect(page.locator("#access-dialog")).toBeVisible();
+  await page.locator("#submit-access").click();
+  await expect(page.locator("#access-dialog")).toBeHidden();
+});
+
+// Пункты настроек у каждой системы свои, и наугад их называть нельзя: неверный
+// путь хуже молчания. Проверяем ровно это — что текст следует за системой, а не
+// печатает один и тот же путь всем подряд.
+test("names the settings path of the system the reader is actually on", async ({ page }) => {
   await page.addInitScript(() => {
-    const matchMedia = window.matchMedia.bind(window);
-    window.matchMedia = (query) =>
-      query.includes("display-mode: standalone") ? { matches: true, media: query } : matchMedia(query);
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      get: () => ({ platform: "macOS", brands: [{ brand: "Google Chrome", version: "141" }] }),
+    });
   });
   await page.goto("/");
   await loadMarkdown(page);
@@ -1571,8 +1609,11 @@ test("sends the installed app to system settings when a folder is closed to it",
     buffer: Buffer.from("### Строка 3 · Правка\n\n> Первая строка с целью.\n\nЗамечание.\n"),
   });
 
-  await expect(page.locator("#toast")).toContainText("настройках системы");
-  await expect(page.locator("#toast")).not.toContainText("Попробуйте ещё раз");
+  await expect(page.locator("#access-steps")).toContainText("Файлы и папки");
+  // В списке настроек стоит браузер, а не приложение: назвать надо именно его,
+  // иначе человек будет искать строку, которой там нет.
+  await expect(page.locator("#access-dialog")).toContainText("Google Chrome");
+  await expect(page.locator("#access-steps")).not.toContainText("Flatpak");
 });
 
 // Установленному приложению система не даёт прочитать файл, выбранный в её же

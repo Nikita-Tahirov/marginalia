@@ -89,6 +89,11 @@ const elements = {
   closePaste: document.querySelector("#close-paste"),
   renameDocument: document.querySelector("#rename-document"),
   renameDialog: document.querySelector("#rename-dialog"),
+  accessDialog: document.querySelector("#access-dialog"),
+  accessIntro: document.querySelector("#access-intro"),
+  accessSteps: document.querySelector("#access-steps"),
+  closeAccess: document.querySelector("#close-access"),
+  submitAccess: document.querySelector("#submit-access"),
   renameInput: document.querySelector("#rename-input"),
   submitRename: document.querySelector("#submit-rename"),
   cancelRename: document.querySelector("#cancel-rename"),
@@ -1371,19 +1376,95 @@ function readFailureReason(error) {
   return name || "браузер не объяснил причину";
 }
 
-// Установленное приложение — для системы отдельная программа, и доступ к
-// папкам ей выдают отдельно от браузера, из которого её ставили. Отсюда случай,
-// необъяснимый изнутри страницы: тот же адрес, тот же файл, во вкладке
-// открывается, в приложении — нет. Совет должен вести туда, где это решается,
-// а «попробуйте ещё раз» здесь не поможет никогда.
-function installedAsApp() {
-  return Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches);
+// Отказ в доступе к папке не лечится повтором: пока человек не сходит в
+// настройки системы, тот же файл будет отказывать всегда. Отличаем этот случай
+// от «файл унесли», потому что советы у них противоположные.
+function deniedByPolicy(error) {
+  const name = typeof error?.name === "string" ? error.name : "";
+  return name === "NotReadableError" || name === "SecurityError";
 }
 
-function readFailureAdvice() {
-  return installedAsApp()
-    ? "Перетащите файл в это окно — перетаскиванию система доступ даёт; иначе разрешите приложению доступ к этой папке в настройках системы."
-    : "Попробуйте ещё раз или откройте файл из другой папки.";
+// Имя браузера нужно назвать буквально: в списке настроек стоит он, а не
+// приложение. Спрашиваем его у самого браузера, а разбор строки оставляем
+// запасным путём — в ней «Chrome» пишут о себе и те, кто им не является.
+function browserLabel() {
+  const brands = navigator.userAgentData?.brands;
+  if (Array.isArray(brands)) {
+    const named = brands.find(
+      (item) => typeof item?.brand === "string" && !/not.?a.?brand|chromium/i.test(item.brand),
+    );
+    if (named) return named.brand;
+  }
+  const agent = navigator.userAgent ?? "";
+  if (/edg\//i.test(agent)) return "Microsoft Edge";
+  if (/\bopr\//i.test(agent)) return "Opera";
+  if (/chrome\//i.test(agent)) return "Google Chrome";
+  return "браузер";
+}
+
+function systemKind() {
+  const source = navigator.userAgentData?.platform || navigator.platform || "";
+  const agent = navigator.userAgent ?? "";
+  if (/mac/i.test(source) || /mac os x/i.test(agent)) return "macos";
+  if (/win/i.test(source) || /windows/i.test(agent)) return "windows";
+  if (/linux|x11|cros/i.test(source) || /linux|cros/i.test(agent)) return "linux";
+  return "unknown";
+}
+
+// Пункты настроек у каждой системы свои, и наугад их называть нельзя: неверный
+// путь хуже молчания. Неизвестной системе даём то, что верно везде.
+function accessGuide() {
+  const browser = browserLabel();
+  if (systemKind() === "macos") {
+    return {
+      intro: `macOS выдаёт доступ к «Загрузкам», «Рабочему столу» и «Документам» каждой программе отдельно. Установленному приложению отдельной строки в списке нет: доступ выдают браузеру «${browser}», а приложение читает файлы уже через него.`,
+      steps: [
+        "Откройте «Системные настройки» → «Конфиденциальность и безопасность».",
+        `Выберите «Файлы и папки» и найдите в списке «${browser}».`,
+        "Включите нужную папку и откройте файл заново.",
+      ],
+    };
+  }
+  if (systemKind() === "windows") {
+    return {
+      intro: "Windows закрывает приложениям «Документы», «Рабочий стол» и «Изображения», когда включён контролируемый доступ к папкам.",
+      steps: [
+        "Откройте «Безопасность Windows» → «Защита от вирусов и угроз».",
+        "В «Защите от программ-вымогателей» откройте «Контролируемый доступ к папкам».",
+        `Разрешите работу приложения через контролируемый доступ и добавьте «${browser}».`,
+      ],
+    };
+  }
+  if (systemKind() === "linux") {
+    return {
+      intro: `Браузер «${browser}», установленный через Flatpak или Snap, работает в песочнице и видит не все папки домашней директории.`,
+      steps: [
+        "Для Flatpak выдайте доступ к папке — это делает Flatseal.",
+        "Для Snap проверьте подключение к домашним папкам командой snap connect.",
+        "Либо держите файлы в папке, которая приложению уже доступна.",
+      ],
+    };
+  }
+  return {
+    intro: "Система закрыла приложению доступ к этой папке. Пока доступ не выдан, файлы из неё открываться не будут.",
+    steps: [
+      `Разрешите «${browser}» доступ к этой папке в настройках системы.`,
+      "Либо откройте файл из другой папки.",
+    ],
+  };
+}
+
+function showAccessHelp() {
+  const guide = accessGuide();
+  elements.accessIntro.textContent = guide.intro;
+  elements.accessSteps.replaceChildren(
+    ...guide.steps.map((step) => {
+      const item = document.createElement("li");
+      item.textContent = step;
+      return item;
+    }),
+  );
+  if (!elements.accessDialog.open) elements.accessDialog.showModal();
 }
 
 async function importReview(file) {
@@ -1403,10 +1484,8 @@ async function importReview(file) {
     text = await readFileText(file);
   } catch (error) {
     elements.reviewInput.value = "";
-    showToast(
-      `Файл не удалось прочитать: ${readFailureReason(error)}. ${readFailureAdvice()}`,
-      "error",
-    );
+    showToast(`Файл не удалось прочитать: ${readFailureReason(error)}.`, "error");
+    if (deniedByPolicy(error)) showAccessHelp();
     return;
   }
   elements.reviewInput.value = "";
@@ -2032,10 +2111,8 @@ async function openDroppedFiles(files) {
     try {
       text = await readFileText(file);
     } catch (error) {
-      showToast(
-        `Не удалось прочитать «${file.name}»: ${readFailureReason(error)}. ${readFailureAdvice()}`,
-        "error",
-      );
+      showToast(`Не удалось прочитать «${file.name}»: ${readFailureReason(error)}.`, "error");
+      if (deniedByPolicy(error)) showAccessHelp();
       continue;
     }
     // Рецензию узнаём по машинному блоку, а не по имени файла: имя зависит от
@@ -2072,9 +2149,7 @@ document.addEventListener("drop", (event) => {
 
 // Файл, открытый из Finder «через приложение», приходит не событием, а очередью
 // запуска, и приходит однажды — при старте окна. Потребителя ставим сразу:
-// поставленный позже не получит уже случившийся запуск. Право на файл здесь
-// тоже даёт сама операция открытия, поэтому этот путь работает в папках,
-// закрытых для системной панели выбора.
+// поставленный позже не получит уже случившийся запуск.
 if ("launchQueue" in window) {
   window.launchQueue.setConsumer(async (params) => {
     const handles = params?.files ?? [];
@@ -2084,6 +2159,7 @@ if ("launchQueue" in window) {
         files.push(await handle.getFile());
       } catch (error) {
         showToast(`Не удалось открыть файл: ${readFailureReason(error)}.`, "error");
+        if (deniedByPolicy(error)) showAccessHelp();
       }
     }
     if (files.length) await openDroppedFiles(files);
@@ -2108,6 +2184,8 @@ elements.renameDocument.addEventListener("click", openRenameDialog);
 elements.submitRename.addEventListener("click", renameActiveDocument);
 elements.cancelRename.addEventListener("click", () => elements.renameDialog.close());
 elements.closeRename.addEventListener("click", () => elements.renameDialog.close());
+elements.submitAccess.addEventListener("click", () => elements.accessDialog.close());
+elements.closeAccess.addEventListener("click", () => elements.accessDialog.close());
 elements.renameInput.addEventListener("input", syncRenameButton);
 elements.renameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

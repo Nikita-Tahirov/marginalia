@@ -1676,6 +1676,20 @@ body[data-anchoring] {
   font-size: 12px;
 }
 
+/* Отступ слева считается от номера, а не от текста, поэтому список сдвинут
+   внутрь на ширину номера — иначе цифры вылезают за поле диалога. */
+.dialog-steps {
+  margin: 0 var(--space-4) var(--space-2);
+  padding-left: var(--space-4);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.dialog-steps li {
+  padding-left: 2px;
+}
+
 .text-dialog .input {
   display: block;
   width: calc(100% - var(--space-4) * 2);

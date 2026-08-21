@@ -380,6 +380,22 @@
         </div>
       </dialog>
 
+      <!-- Отказ системы в доступе к папке не лечится повтором и не помещается в
+           исчезающую подсказку: человеку нужно дойти до настроек, а пункты там
+           зависят от системы. Поэтому шаги живут в диалоге и заполняются из
+           JavaScript — разметка знает только их место. -->
+      <dialog id="access-dialog" class="text-dialog">
+        <div class="dialog-heading">
+          <h2>Дайте доступ к папке</h2>
+          <button id="close-access" class="btn btn-icon" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <p id="access-intro" class="dialog-hint"></p>
+        <ol id="access-steps" class="dialog-steps"></ol>
+        <div class="dialog-actions">
+          <button id="submit-access" class="btn btn-primary compact-btn" type="button">Понятно</button>
+        </div>
+      </dialog>
+
       <dialog id="rename-dialog" class="text-dialog">
         <div class="dialog-heading">
           <h2>Название статьи</h2>
